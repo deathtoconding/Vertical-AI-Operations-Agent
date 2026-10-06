@@ -114,7 +114,7 @@ jobs:
         run: python scripts/verify_release.py --base-url "${{ vars.PRODUCTION_BASE_URL }}" --json release-report.json
       - name: Rollback drill against the new release (DEV-004)
         run: python scripts/rollback_drill.py --json rollback-report.json
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         if: always()
         with:
           name: release-evidence
