@@ -94,6 +94,13 @@ ignore = [
 ]
 
 [tool.ruff.lint.per-file-ignores]
+# ``app/cli.py`` is the operator entry point: a containerised server must bind all interfaces,
+# which is exactly what S104 warns about. ``app/integrations/http.py`` uses the standard RNG for
+# retry-backoff jitter, which is not a security decision (S311). Both are suppressed here rather
+# than inline, because a line carrying both ruff's ``# noqa`` and bandit's ``# nosec`` markers is
+# a syntax ruff warns about; bandit keeps its own inline marker with the justification.
+"app/cli.py" = ["S104"]
+"app/integrations/http.py" = ["S311"]
 "tests/**" = ["S101", "S105", "S106", "T20", "S108"]
 "evals/**" = ["T20", "S101"]
 "scripts/**" = ["T20", "S101", "S603", "S607"]

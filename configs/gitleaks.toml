@@ -24,19 +24,30 @@ useDefault = true
 # Project-specific rules
 # --------------------------------------------------------------------------- #
 
+# Every rule below captures the *value* of the assignment in group 1 and declares
+# `secretGroup = 1`. That is not cosmetic: gitleaks computes the finding's entropy and evaluates
+# the rule allowlists against the extracted secret, so a rule that captures the variable name
+# instead (the first group of `(AIOPS_JIRA_API_TOKEN|jira_token)`) measures the entropy of the
+# name and hands its allowlists a string that can never contain a placeholder — the rule then
+# reports assignments it was explicitly told to tolerate.
+
 [[rules]]
 id = "aiops-api-token-registry"
 description = "Bearer token bindings for AIOPS_API_TOKENS (token:role:actor)"
-regex = '''(?i)(AIOPS_API_TOKENS|api_tokens)\s*[:=]\s*["']?[A-Za-z0-9_\-]{16,}:[a-z]+:'''
-secretGroup = 0
+regex = '''(?i)(?:AIOPS_API_TOKENS|api_tokens)\s*[:=]\s*["']?([A-Za-z0-9_\-]{16,}:[a-z]+:)'''
+secretGroup = 1
 entropy = 3.0
 keywords = ["AIOPS_API_TOKENS", "api_tokens"]
-[rules.allowlist]
+[[rules.allowlists]]
 description = "Placeholder and test-only token registries"
 regexes = [
-  '''(?i)(change[-_ ]?me|placeholder|example|your[-_]|xxx+|<[^>]+>|\$\{[^}]+\})''',
+  '''(?i)(change[-_ ]?me|placeholder|example|your[-_]|xxx+|<[^>]+>)''',
   '''(?i)(viewer|operator|sre|admin)-token''',
 ]
+[[rules.allowlists]]
+description = "A reference into the secret store is not a value"
+regexTarget = "line"
+regexes = ['''\$\{[^}]+\}''']
 
 [[rules]]
 id = "aiops-slack-webhook"
@@ -47,29 +58,50 @@ keywords = ["hooks.slack.com"]
 [[rules]]
 id = "aiops-jira-api-token"
 description = "Jira/Atlassian API token assignment"
-regex = '''(?i)(AIOPS_JIRA_(API_)?TOKEN|jira_token)\s*[:=]\s*["']?[A-Za-z0-9_\-]{20,}'''
+regex = '''(?i)(?:AIOPS_JIRA_(?:API_)?TOKEN|jira_token)\s*[:=]\s*["']?([A-Za-z0-9_\-]{20,})'''
+secretGroup = 1
 keywords = ["AIOPS_JIRA", "jira_token"]
-[rules.allowlist]
+[[rules.allowlists]]
 description = "Documented placeholders only"
-regexes = ['''(?i)(placeholder|example|your[-_]|xxx|changeme|\$\{[^}]+\})''']
+regexes = ['''(?i)(placeholder|example|your[-_]|xxx|changeme)''']
+[[rules.allowlists]]
+description = "A reference into the secret store is not a value"
+regexTarget = "line"
+regexes = ['''\$\{[^}]+\}''']
 
 [[rules]]
 id = "aiops-llm-api-key"
 description = "LLM provider API key in an assignment (not in code that reads the environment)"
-regex = '''(?i)AIOPS_LLM_API_KEY\s*[:=]\s*["']?[A-Za-z0-9_\-]{20,}'''
+# An empty assignment (`AIOPS_LLM_API_KEY=`) is how the variable is documented, and it cannot
+# match a rule that requires 20+ characters — no allowlist entry is needed for it.
+regex = '''(?i)AIOPS_LLM_API_KEY\s*[:=]\s*["']?([A-Za-z0-9_\-]{20,})'''
+secretGroup = 1
 keywords = ["AIOPS_LLM_API_KEY"]
-[rules.allowlist]
-description = "Empty values and placeholders are how the variable is documented"
-regexes = ['''^\s*AIOPS_LLM_API_KEY\s*=\s*["']?\s*$''', '''(?i)(placeholder|example|\$\{[^}]+\})''']
+[[rules.allowlists]]
+description = "Documented placeholders only"
+regexes = ['''(?i)(placeholder|example|your[-_]|changeme|dummy)''']
+[[rules.allowlists]]
+description = "A reference into the secret store is not a value"
+regexTarget = "line"
+regexes = ['''\$\{[^}]+\}''']
 
 [[rules]]
 id = "aiops-deploy-credential"
 description = "DEPLOY_TOKEN / webhook credentials used by the CD pipeline"
-regex = '''(?i)(DEPLOY_TOKEN|GRAFANA_PASSWORD|POSTGRES_PASSWORD)\s*[:=]\s*["']?[^\s"']{12,}'''
+# The value class excludes the shell conditional-expansion markers `?`, `-` and `+`, because
+# `${DEPLOY_TOKEN:?set me}` and `${POSTGRES_PASSWORD:-default}` are *references*, never
+# credentials — treating `:?` as an assignment operator is what made this rule report
+# `scripts/deploy.sh` and fail the security workflow.
+regex = '''(?i)(?:DEPLOY_TOKEN|GRAFANA_PASSWORD|POSTGRES_PASSWORD)\s*[:=]\s*["']?([^\s"'?+\-][^\s"']{11,})'''
+secretGroup = 1
 keywords = ["DEPLOY_TOKEN", "GRAFANA_PASSWORD", "POSTGRES_PASSWORD"]
-[rules.allowlist]
-description = "Compose and workflow files pass these through from the secret store"
-regexes = ['''\$\{[^}]+\}''', '''(?i)(placeholder|example|changeme|your[-_])''']
+[[rules.allowlists]]
+description = "Documented placeholders only"
+regexes = ['''(?i)(placeholder|example|changeme|your[-_])''']
+[[rules.allowlists]]
+description = "Compose files and workflows pass these through from the secret store"
+regexTarget = "line"
+regexes = ['''\$\{[^}]+\}''']
 
 # --------------------------------------------------------------------------- #
 # Global allowlists

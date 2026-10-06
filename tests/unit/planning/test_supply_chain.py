@@ -87,6 +87,13 @@ def test_third_party_actions_are_pinned_to_a_reference(path: pathlib.Path) -> No
         assert ref and not ref.startswith(("${{", "main", "master")), (
             f"{path.name}: {reference} must pin a version tag, not a branch"
         )
+        # A ref that does not resolve fails the job at "Set up job", before a single step runs,
+        # and reads nothing like a test failure. That is what `aquasecurity/trivy-action@0.29.0`
+        # did: trivy-action publishes `vX.Y.Z` tags, so the container job was dead on arrival.
+        assert re.fullmatch(r"v\d+(?:\.\d+)*", ref) or re.fullmatch(r"[0-9a-f]{40}", ref), (
+            f"{path.name}: {reference} must pin a release tag (`vX[.Y[.Z]]`) or a commit SHA — "
+            "check against the upstream registry that the ref exists"
+        )
 
 
 def test_pipelines_declare_least_privilege_permissions() -> None:
@@ -216,6 +223,9 @@ def test_the_security_pipeline_runs_every_declared_control() -> None:
     assert "check_pins.py" in commands, "pins are verified before any audit"
     assert "pip-audit" in commands
     assert "bandit" in commands and "check_bandit.py" in commands
+    # The graded threshold lives in check_bandit.py; bandit itself must only report, or a single
+    # informational finding ends the job before the threshold is ever applied.
+    assert "--exit-zero" in commands, "bandit must report findings, not judge them"
     assert "trivy" in dumped and "codeql" in dumped.lower()
     assert "generate_sbom.py" in commands
 
@@ -238,8 +248,15 @@ def test_gitleaks_configuration_extends_the_defaults_and_scopes_its_allowlists()
     assert config["extend"]["useDefault"] is True, "provider rules must stay enabled"
     rules = {rule["id"] for rule in config["rules"]}
     assert rules, "the project's own secret shapes must be covered"
-    assert any("allowlist" in rule for rule in config["rules"]), (
-        "placeholders must be tolerated per rule, not by switching rules off"
+    allowlists = [rule.get("allowlist") or rule.get("allowlists") for rule in config["rules"]]
+    assert any(allowlists), "placeholders must be tolerated per rule, not by switching rules off"
+    # An assignment rule must also say which values are *not* findings, and `secretGroup` is what
+    # points entropy and those value-scoped allowlists at the credential rather than at the
+    # variable name (see tests/unit/planning/test_secret_rules.py).
+    assignment_rules = [rule for rule in config["rules"] if rule.get("secretGroup")]
+    assert assignment_rules, "a rule that captures the variable name cannot be allowlisted"
+    assert all(rule.get("allowlist") or rule.get("allowlists") for rule in assignment_rules), (
+        "every rule that extracts a value must declare what is not a finding"
     )
     allowlist = config["allowlist"]
     assert allowlist.get("paths"), "allowlists must be path-scoped"

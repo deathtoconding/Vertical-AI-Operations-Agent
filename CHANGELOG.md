@@ -9,7 +9,37 @@ upgrading*.
 
 ## [Unreleased]
 
-Nothing yet.
+### Fixed
+
+Defects the v1.0.0 release gate found once the pipelines were run against the release branch. They
+are recorded because each one made a control either fail for the wrong reason or never run at all.
+
+- **Secret scanning reported a shell reference as a leak.** The project's own
+  `aiops-deploy-credential` rule treated `${DEPLOY_TOKEN:?DEPLOY_TOKEN is required …}` as an
+  assignment, so the gitleaks job failed on every pull-request run — and it scans the whole branch
+  history, so the finding could not be fixed by editing the tip. The rule now captures the value
+  (`secretGroup`), excludes the shell conditional-expansion markers (`:?`, `:-`, `:+`), and
+  allowlists references and placeholders per rule. `tests/unit/planning/test_secret_rules.py`
+  re-implements the subset of gitleaks' semantics these rules rely on and fails if a custom rule
+  reports a non-secret; it fails against the previous ruleset.
+- **The container scan never ran.** `aquasecurity/trivy-action@0.29.0` does not exist — the action
+  publishes `vX.Y.Z` tags — so the job died at *Set up job* before a single step executed, taking
+  the SBOM step with it. Pinned to the verified `v0.29.0`, and the pinning test now rejects a ref
+  that is not a release tag or a commit SHA.
+- **Strict type checking failed on the CI install profile.** `scripts/pg_server.py` used a static
+  `from pgserver import get_server  # type: ignore[attr-defined]`. `pgserver` is the optional
+  `localdb` extra and its stubs do not re-export the function, so on the `.[dev]` profile CI
+  installs the suppression counted as unused and `mypy --strict` failed the build. The import is
+  resolved dynamically now, and a missing extra prints an actionable message instead of a traceback.
+- **Bandit failed before its threshold was applied.** The job ran bandit without `--exit-zero`, so
+  any finding ended the step before `check_bandit.py` could decide what medium/high means. The two
+  real findings are cleared as well: the bind-all-interfaces warning in `app/cli.py` and the
+  RNG-for-jitter warning in `app/integrations/http.py` carry bandit's own `# nosec` markers with a
+  justification, with ruff's equivalent suppressed per file.
+
+**Verify after upgrading:** `make ci` and `make security` are green; the pinned
+`aquasecurity/trivy-action@v0.29.0` tag resolves in the upstream registry; the gitleaks job is green
+on a pull request (it scans the branch history, not only the tip).
 
 ## [1.0.0] — 2026-10-06
 

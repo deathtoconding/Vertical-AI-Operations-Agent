@@ -69,7 +69,10 @@ class ResilientHttpClient:
         self._client = client
         self._owns_client = client is None
         self._sleep = sleep or asyncio.sleep
-        self._jitter = jitter or (lambda: random.uniform(0, 0.1))  # noqa: S311 - not crypto
+        # Backoff jitter only has to spread retries out; it is not a security decision, so the
+        # non-cryptographic generator is the right tool. Ruff's S311 is silenced per file in
+        # pyproject.toml; bandit reads this marker.
+        self._jitter = jitter or (lambda: random.uniform(0, 0.1))  # nosec B311 - retry jitter
 
     # -- lifecycle ---------------------------------------------------------- #
 

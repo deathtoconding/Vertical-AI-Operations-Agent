@@ -70,7 +70,9 @@ eval-update-baseline: ## intentionally update the eval baseline (requires review
 	$(BIN)/python evals/runner.py --config evals/config.yaml --update-baseline
 
 security: ## SAST, dependency, and secret scanning
-	$(BIN)/bandit -q -c pyproject.toml -r app scripts
+	mkdir -p artifacts
+	$(BIN)/bandit -q --exit-zero -c pyproject.toml -r app scripts -f json -o artifacts/bandit.json
+	$(BIN)/python scripts/check_bandit.py artifacts/bandit.json
 	$(BIN)/pip-audit --strict --requirement requirements.lock || $(BIN)/pip-audit -l
 	bash scripts/scan_secrets.sh
 

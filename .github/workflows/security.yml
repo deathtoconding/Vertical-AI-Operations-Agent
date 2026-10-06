@@ -68,7 +68,10 @@ jobs:
       - run: |
           python -m pip install --upgrade pip
           pip install -e ".[dev]"
-      - run: bandit -q -c pyproject.toml -r app scripts -f json -o bandit.json
+      # `--exit-zero` keeps bandit from failing the step on informational findings: the graded
+      # gate is the checker below, which is the step that decides what medium/high means. Without
+      # it a single LOW-severity note would end the job before the threshold was ever applied.
+      - run: bandit -q --exit-zero -c pyproject.toml -r app scripts -f json -o bandit.json
       - name: Fail on medium/high findings
         run: python scripts/check_bandit.py bandit.json
 
@@ -85,7 +88,10 @@ jobs:
       - name: Build image
         run: docker build -f infra/docker/Dockerfile -t aiops-agent:scan .
       - name: Trivy image scan (fails on HIGH/CRITICAL with a fix available)
-        uses: aquasecurity/trivy-action@0.29.0
+        # The ref must be a tag that exists: `@0.29.0` does not (trivy-action publishes
+        # `vX.Y.Z`), and an unresolvable action fails the job at "Set up job" before any step
+        # runs. Verified with `gh api repos/aquasecurity/trivy-action/git/ref/tags/v0.29.0`.
+        uses: aquasecurity/trivy-action@v0.29.0
         with:
           image-ref: aiops-agent:scan
           format: sarif

@@ -1,13 +1,15 @@
 #!/usr/bin/env python3
 """Fail the build on medium/high bandit findings (SEC-005).
 
-``bandit -q`` already exits non-zero on findings, but it does not distinguish "this is a test
-fixture using a known-weak hash" from "this is a production path". This wrapper makes the
-threshold explicit and prints the offending lines so a reviewer can see what the pipeline saw.
+``bandit -q`` exits non-zero on *any* finding, but it does not distinguish "this is a test fixture
+using a known-weak hash" from "this is a production path" — and a step that fails on everything
+ends the job before this threshold is ever applied. The pipeline therefore runs bandit with
+``--exit-zero`` (bandit reports, this checker decides) and prints the offending lines so a
+reviewer can see what the pipeline saw.
 
 Usage::
 
-    bandit -q -c pyproject.toml -r app scripts -f json -o bandit.json
+    bandit -q --exit-zero -c pyproject.toml -r app scripts -f json -o bandit.json
     python scripts/check_bandit.py bandit.json
 """
 

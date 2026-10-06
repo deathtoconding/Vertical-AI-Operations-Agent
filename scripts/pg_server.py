@@ -14,16 +14,40 @@ Usage::
 from __future__ import annotations
 
 import argparse
+import importlib
 import json
 import pathlib
 import sys
 import time
+from typing import Any
 
 REPO_ROOT = pathlib.Path(__file__).resolve().parents[1]
 if str(REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(REPO_ROOT))
 
 from app.persistence.pg import database_url_from_socket  # noqa: E402
+
+
+def _load_get_server() -> Any:
+    """Import ``pgserver.get_server`` from the optional ``localdb`` extra.
+
+    The import is dynamic on purpose. ``pgserver`` is an optional extra and its stubs do not
+    re-export ``get_server``, so a static ``from pgserver import get_server`` needs a type
+    suppression that is *only* valid on the ``localdb`` profile: on the ``.[dev]`` profile CI
+    installs, ``ignore_missing_imports`` already covers it and mypy --strict then fails the build
+    with "unused type: ignore comment". Resolving it at runtime keeps both profiles clean and
+    turns a missing extra into an actionable message instead of an ImportError traceback.
+    """
+    try:
+        module: Any = importlib.import_module("pgserver")
+    except ModuleNotFoundError as exc:  # pragma: no cover - depends on the install profile
+        print(
+            "the local PostgreSQL provider is an optional extra — install it with "
+            '`pip install -e ".[localdb]"` (ADR-0010)',
+            file=sys.stderr,
+        )
+        raise SystemExit(2) from exc
+    return module.get_server
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -34,7 +58,7 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--stop", action="store_true")
     args = parser.parse_args(argv)
 
-    from pgserver import get_server  # type: ignore[attr-defined]  # not re-exported by the stubs
+    get_server = _load_get_server()
 
     data_dir = pathlib.Path(args.data).resolve()
     data_dir.mkdir(parents=True, exist_ok=True)

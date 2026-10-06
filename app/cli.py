@@ -96,7 +96,13 @@ def build_parser() -> argparse.ArgumentParser:
     sub = parser.add_subparsers(dest="command", required=True)
 
     serve = sub.add_parser("serve", help="run the API")
-    serve.add_argument("--host", default="0.0.0.0")  # noqa: S104 - containers bind all interfaces
+    # Binding all interfaces is the point of a containerised server: the platform routes traffic
+    # to the pod, so listening only on loopback would make it unreachable. Bandit needs its own
+    # marker for that (ruff's opinion is configured per file, in pyproject.toml).
+    serve.add_argument(
+        "--host",
+        default="0.0.0.0",  # nosec B104 - a containerised server must bind all interfaces
+    )
     serve.add_argument("--port", type=int, default=8000)
     serve.add_argument("--workers", type=int, default=1)
     serve.add_argument("--reload", action="store_true")
