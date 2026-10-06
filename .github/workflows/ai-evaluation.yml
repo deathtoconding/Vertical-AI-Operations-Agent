@@ -35,6 +35,9 @@ jobs:
   evaluate:
     name: evaluation + regression gate
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    timeout-minutes: 40
     env:
       AIOPS_ENV: test
       AIOPS_AUTH_ENABLED: "false"

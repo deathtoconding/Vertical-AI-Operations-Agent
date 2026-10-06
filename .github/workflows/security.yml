@@ -12,12 +12,14 @@ on:
 
 permissions:
   contents: read
-  security-events: write
 
 jobs:
   secrets:
     name: secret scanning (gitleaks)
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    timeout-minutes: 15
     steps:
       - uses: actions/checkout@v5
         with:
@@ -34,6 +36,9 @@ jobs:
   dependencies:
     name: dependency audit (pip-audit)
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    timeout-minutes: 20
     steps:
       - uses: actions/checkout@v5
       - uses: actions/setup-python@v6
@@ -51,6 +56,9 @@ jobs:
   sast:
     name: static analysis (bandit)
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    timeout-minutes: 20
     steps:
       - uses: actions/checkout@v5
       - uses: actions/setup-python@v6
@@ -66,7 +74,12 @@ jobs:
 
   container:
     name: container scan (trivy) + SBOM
+
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      security-events: write
+    timeout-minutes: 40
     steps:
       - uses: actions/checkout@v5
       - name: Build image

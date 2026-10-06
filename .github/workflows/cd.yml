@@ -29,7 +29,12 @@ permissions:
 jobs:
   build:
     name: build immutable artifact
+
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+    timeout-minutes: 45
     outputs:
       image: ${{ steps.meta.outputs.image }}
     steps:
@@ -49,6 +54,9 @@ jobs:
   staging:
     name: deploy staging + smoke + evaluation
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    timeout-minutes: 60
     needs: [build]
     environment:
       name: staging
@@ -79,6 +87,9 @@ jobs:
   production:
     name: deploy production (approval required)
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    timeout-minutes: 60
     needs: [build, staging]
     if: github.event_name == 'push' && github.ref == 'refs/heads/main' || inputs.environment == 'production'
     environment:

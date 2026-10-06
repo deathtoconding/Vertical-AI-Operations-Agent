@@ -24,6 +24,9 @@ logs/
 .pgdata/
 
 # --- Secrets (SEC-005 / AI coding rule 6) ---
+# Compose secrets: the real files exist only on the machine that runs the stack.
+infra/compose/secrets/*
+!infra/compose/secrets/*.example
 .env
 .env.local
 .env.*.local
@@ -35,3 +38,6 @@ logs/
 .DS_Store
 .idea/
 .vscode/
+
+# --- AI evaluation output ---
+evals/results/

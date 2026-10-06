@@ -1,0 +1,94 @@
+# SEC-005 — gitleaks configuration.
+#
+# CI runs `gitleaks/gitleaks-action` with `GITLEAKS_CONFIG=configs/gitleaks.toml` (see
+# .github/workflows/security.yml). The default ruleset already knows provider credential shapes,
+# so this file extends it rather than replacing it, and adds the two things the defaults cannot
+# know:
+#
+#   1. project-specific secrets — the API token registry (`AIOPS_API_TOKENS`) and the webhook
+#      URLs this system is configured with;
+#   2. deliberate allowances for the artefacts that are *meant* to contain placeholders
+#      (`.env.example`, docs, test fixtures) and for lock/SBOM files whose hashes have high
+#      entropy but are not credentials.
+#
+# Every allowance is path- or value-scoped: an allowlist entry that matches everywhere is how a
+# scanner becomes decorative. `useDefault = true` keeps the provider rules in force everywhere
+# except where a path is explicitly exempted below.
+
+title = "Vertical AI Operations Agent secret scanning"
+
+[extend]
+useDefault = true
+
+# --------------------------------------------------------------------------- #
+# Project-specific rules
+# --------------------------------------------------------------------------- #
+
+[[rules]]
+id = "aiops-api-token-registry"
+description = "Bearer token bindings for AIOPS_API_TOKENS (token:role:actor)"
+regex = '''(?i)(AIOPS_API_TOKENS|api_tokens)\s*[:=]\s*["']?[A-Za-z0-9_\-]{16,}:[a-z]+:'''
+secretGroup = 0
+entropy = 3.0
+keywords = ["AIOPS_API_TOKENS", "api_tokens"]
+[rules.allowlist]
+description = "Placeholder and test-only token registries"
+regexes = [
+  '''(?i)(change[-_ ]?me|placeholder|example|your[-_]|xxx+|<[^>]+>|\$\{[^}]+\})''',
+  '''(?i)(viewer|operator|sre|admin)-token''',
+]
+
+[[rules]]
+id = "aiops-slack-webhook"
+description = "Slack incoming webhook URL"
+regex = '''https://hooks\.slack\.com/services/[A-Za-z0-9_/+-]{20,}'''
+keywords = ["hooks.slack.com"]
+
+[[rules]]
+id = "aiops-jira-api-token"
+description = "Jira/Atlassian API token assignment"
+regex = '''(?i)(AIOPS_JIRA_(API_)?TOKEN|jira_token)\s*[:=]\s*["']?[A-Za-z0-9_\-]{20,}'''
+keywords = ["AIOPS_JIRA", "jira_token"]
+[rules.allowlist]
+description = "Documented placeholders only"
+regexes = ['''(?i)(placeholder|example|your[-_]|xxx|changeme|\$\{[^}]+\})''']
+
+[[rules]]
+id = "aiops-llm-api-key"
+description = "LLM provider API key in an assignment (not in code that reads the environment)"
+regex = '''(?i)AIOPS_LLM_API_KEY\s*[:=]\s*["']?[A-Za-z0-9_\-]{20,}'''
+keywords = ["AIOPS_LLM_API_KEY"]
+[rules.allowlist]
+description = "Empty values and placeholders are how the variable is documented"
+regexes = ['''^\s*AIOPS_LLM_API_KEY\s*=\s*["']?\s*$''', '''(?i)(placeholder|example|\$\{[^}]+\})''']
+
+[[rules]]
+id = "aiops-deploy-credential"
+description = "DEPLOY_TOKEN / webhook credentials used by the CD pipeline"
+regex = '''(?i)(DEPLOY_TOKEN|GRAFANA_PASSWORD|POSTGRES_PASSWORD)\s*[:=]\s*["']?[^\s"']{12,}'''
+keywords = ["DEPLOY_TOKEN", "GRAFANA_PASSWORD", "POSTGRES_PASSWORD"]
+[rules.allowlist]
+description = "Compose and workflow files pass these through from the secret store"
+regexes = ['''\$\{[^}]+\}''', '''(?i)(placeholder|example|changeme|your[-_])''']
+
+# --------------------------------------------------------------------------- #
+# Global allowlists
+# --------------------------------------------------------------------------- #
+
+[allowlist]
+description = "Paths that intentionally contain placeholders, fixtures or high-entropy hashes"
+paths = [
+  '''\.env\.example$''',
+  '''(^|/)docs/''',
+  '''(^|/)tests/''',
+  '''(^|/)evals/datasets/''',
+  '''(^|/)evals/baselines/''',
+  '''requirements\.lock$''',
+  '''(^|/)artifacts/''',
+  '''(^|/)\.pgdata/''',
+]
+# Values that are obviously synthetic are never findings, wherever they appear.
+regexes = [
+  '''(?i)(placeholder|change[-_ ]?me|example\.invalid|test-(viewer|operator|sre|admin)|your-[a-z-]+token)''',
+  '''sha256:[a-f0-9]{64}''',
+]

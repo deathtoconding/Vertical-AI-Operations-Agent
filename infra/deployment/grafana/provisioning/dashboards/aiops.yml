@@ -1,0 +1,17 @@
+# SRE-004 — dashboard provider.
+#
+# Points Grafana at the dashboard that is committed next to it (mounted read-only by compose),
+# so the panels under review in Git are the panels an operator actually sees.
+apiVersion: 1
+
+providers:
+  - name: aiops
+    orgId: 1
+    folder: "AIOps"
+    type: file
+    disableDeletion: true
+    updateIntervalSeconds: 30
+    allowUiUpdates: false
+    options:
+      path: /var/lib/grafana/dashboards
+      foldersFromFilesStructure: false

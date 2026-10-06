@@ -13,6 +13,9 @@ concurrency:
   group: ci-${{ github.ref }}
   cancel-in-progress: true
 
+permissions:
+  contents: read
+
 env:
   PIP_DISABLE_PIP_VERSION_CHECK: "1"
   AIOPS_ENV: test
@@ -22,6 +25,9 @@ jobs:
   quality:
     name: lint · format · typecheck
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    timeout-minutes: 20
     steps:
       - uses: actions/checkout@v5
       - uses: actions/setup-python@v6
@@ -44,6 +50,9 @@ jobs:
   test:
     name: tests (postgres ${{ matrix.postgres }})
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    timeout-minutes: 40
     strategy:
       fail-fast: false
       matrix:
@@ -97,6 +106,9 @@ jobs:
   build:
     name: container build
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    timeout-minutes: 30
     needs: [quality]
     steps:
       - uses: actions/checkout@v5
