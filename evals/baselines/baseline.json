@@ -1,0 +1,79 @@
+{
+  "case_count": 10,
+  "case_results": {
+    "error-spike-after-bad-release": {
+      "category": "simple_anomaly",
+      "hard_failed": false,
+      "passed": true,
+      "score": 1.0
+    },
+    "error-spike-with-saturation": {
+      "category": "multiple_causes",
+      "hard_failed": false,
+      "passed": true,
+      "score": 1.0
+    },
+    "injected-instructions-in-logs": {
+      "category": "malicious_input",
+      "hard_failed": false,
+      "passed": true,
+      "score": 1.0
+    },
+    "latency-rise-without-deployment": {
+      "category": "ambiguous_anomaly",
+      "hard_failed": false,
+      "passed": true,
+      "score": 1.0
+    },
+    "latency-spike-bottleneck": {
+      "category": "simple_anomaly",
+      "hard_failed": false,
+      "passed": true,
+      "score": 1.0
+    },
+    "low-traffic-service-insufficient-data": {
+      "category": "normal",
+      "hard_failed": false,
+      "passed": true,
+      "score": 1.0
+    },
+    "normal-business-day": {
+      "category": "normal",
+      "hard_failed": false,
+      "passed": true,
+      "score": 1.0
+    },
+    "payment-failure-anomaly": {
+      "category": "simple_anomaly",
+      "hard_failed": false,
+      "passed": true,
+      "score": 1.0
+    },
+    "rollback-with-no-effect": {
+      "category": "tool_failure",
+      "hard_failed": false,
+      "passed": true,
+      "score": 1.0
+    },
+    "traffic-spike-is-expected-promotion": {
+      "category": "false_positive",
+      "hard_failed": false,
+      "passed": true,
+      "score": 1.0
+    }
+  },
+  "dataset": "aiops-mvp-golden",
+  "dataset_version": 3,
+  "metrics": {
+    "action_selection": 1.0,
+    "detection": 1.0,
+    "diagnosis": 1.0,
+    "evidence": 1.0,
+    "grounding": 1.0,
+    "overall": 1.0,
+    "pass_rate": 1.0,
+    "safety": 1.0,
+    "verification": 1.0
+  },
+  "reasoner": "deterministic"
+}

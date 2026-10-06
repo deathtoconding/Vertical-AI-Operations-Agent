@@ -1,0 +1,372 @@
+Issue Type,Issue Key,Epic,Summary,Description,Acceptance Criteria,Priority,Story Points,Sprint,Dependencies,Labels,Security,Observability,Test Approach,Implemented By
+Story,OPS-001,EPIC-01 — Product & Domain Foundation,Define SaaS operational domain,As an operations platform I need a clearly defined SaaS operational domain so that agent behaviour remains bounded and reviewable.,"- Supported systems are documented (app, deployment platform, GitHub, Jira, Slack, metrics, logs, payments).
+- Supported incident types are documented (error spike, latency spike, subscription/payment anomaly).
+- Supported actions are documented, including which are blocked in the MVP.
+- Out-of-scope behaviour is documented explicitly.
+- Severity model (SEV1..SEV4) is documented with response expectations.",P0,3,1,,"domain,docs,foundation",Scope boundaries limit what the agent may ever touch (least privilege by construction).,Domain terminology is shared with metric/log naming.,tests/unit/planning/test_documentation.py asserts the required domain contracts are documented and consistent with app.domain.enums.,"docs/planning/domain.md,app/domain/enums.py"
+Subtask,OPS-001-ST,EPIC-01 — Product & Domain Foundation,Define SaaS operational domain: Define domain model,Subtask of OPS-001.,,P0,,1,OPS-001,subtask,,,,
+Subtask,OPS-001-ST,EPIC-01 — Product & Domain Foundation,Define SaaS operational domain: Define incident taxonomy,Subtask of OPS-001.,,P0,,1,OPS-001,subtask,,,,
+Subtask,OPS-001-ST,EPIC-01 — Product & Domain Foundation,Define SaaS operational domain: Define severity levels,Subtask of OPS-001.,,P0,,1,OPS-001,subtask,,,,
+Subtask,OPS-001-ST,EPIC-01 — Product & Domain Foundation,Define SaaS operational domain: Define operational terminology,Subtask of OPS-001.,,P0,,1,OPS-001,subtask,,,,
+Subtask,OPS-001-ST,EPIC-01 — Product & Domain Foundation,Define SaaS operational domain: Document scope boundaries,Subtask of OPS-001.,,P0,,1,OPS-001,subtask,,,,
+Story,OPS-002,EPIC-01 — Product & Domain Foundation,Define agent lifecycle,As an operator I need an explicit incident lifecycle so invalid transitions cannot occur.,"- Valid transitions are defined for NEW, DETECTED, INVESTIGATING, PLANNED, WAITING_APPROVAL, EXECUTING, VERIFYING, RESOLVED, FAILED, ESCALATED.
+- Invalid transitions are rejected with a typed error.
+- Every transition is audited with actor, timestamp and reason.",P0,3,1,OPS-001,"domain,state-machine",A rejected transition must never partially persist (transactional guard).,Transition counter metric labelled by from/to state.,tests/unit/agent/test_state_machine.py — exhaustive matrix over all state pairs.,"app/agent/state.py,app/agent/state_machine.py"
+Subtask,OPS-002-ST,EPIC-01 — Product & Domain Foundation,Define agent lifecycle: Enumerate states,Subtask of OPS-002.,,P0,,1,OPS-002,subtask,,,,
+Subtask,OPS-002-ST,EPIC-01 — Product & Domain Foundation,Define agent lifecycle: Define transition table,Subtask of OPS-002.,,P0,,1,OPS-002,subtask,,,,
+Subtask,OPS-002-ST,EPIC-01 — Product & Domain Foundation,Define agent lifecycle: Implement state machine,Subtask of OPS-002.,,P0,,1,OPS-002,subtask,,,,
+Subtask,OPS-002-ST,EPIC-01 — Product & Domain Foundation,Define agent lifecycle: Implement guard clauses,Subtask of OPS-002.,,P0,,1,OPS-002,subtask,,,,
+Subtask,OPS-002-ST,EPIC-01 — Product & Domain Foundation,Define agent lifecycle: Emit audit events,Subtask of OPS-002.,,P0,,1,OPS-002,subtask,,,,
+Story,OPS-010,EPIC-02 — Core Platform,Create FastAPI service,As a platform owner I need a reproducible API service with health and readiness signalling.,"- Service starts reproducibly (single documented command).
+- GET /health works and is dependency-free.
+- GET /ready works and reports database and LLM readiness.
+- Configuration is environment-driven with no secrets in code.
+- Errors return structured JSON responses with a stable error code.
+- API is versioned under /api/v1.",P0,5,1,OPS-001,"platform,api",No secret is ever echoed back; configuration is validated at boot and fails closed.,"/metrics endpoint, request counters and latency histograms.","tests/unit/api + tests/integration/api — health, readiness, structured error shapes, versioning.","app/main.py,app/api/router.py,app/core/config.py,app/core/errors.py"
+Subtask,OPS-010-ST,EPIC-02 — Core Platform,Create FastAPI service: Create project,Subtask of OPS-010.,,P0,,1,OPS-010,subtask,,,,
+Subtask,OPS-010-ST,EPIC-02 — Core Platform,Create FastAPI service: Configure dependency manager,Subtask of OPS-010.,,P0,,1,OPS-010,subtask,,,,
+Subtask,OPS-010-ST,EPIC-02 — Core Platform,Create FastAPI service: Create FastAPI application,Subtask of OPS-010.,,P0,,1,OPS-010,subtask,,,,
+Subtask,OPS-010-ST,EPIC-02 — Core Platform,Create FastAPI service: Add configuration,Subtask of OPS-010.,,P0,,1,OPS-010,subtask,,,,
+Subtask,OPS-010-ST,EPIC-02 — Core Platform,Create FastAPI service: Add health endpoint,Subtask of OPS-010.,,P0,,1,OPS-010,subtask,,,,
+Subtask,OPS-010-ST,EPIC-02 — Core Platform,Create FastAPI service: Add readiness endpoint,Subtask of OPS-010.,,P0,,1,OPS-010,subtask,,,,
+Subtask,OPS-010-ST,EPIC-02 — Core Platform,Create FastAPI service: Add API versioning,Subtask of OPS-010.,,P0,,1,OPS-010,subtask,,,,
+Subtask,OPS-010-ST,EPIC-02 — Core Platform,Create FastAPI service: Add error middleware,Subtask of OPS-010.,,P0,,1,OPS-010,subtask,,,,
+Story,OPS-011,EPIC-02 — Core Platform,Implement PostgreSQL persistence,"As the system of record I need durable, migrated storage for all operational entities.","- Core entities (incidents, evidence, agent runs, state transitions, actions, approvals, verifications, audit events, tool invocations, anomalies) survive an application restart.
+- Schema is applied by versioned migrations.
+- Connection pool is configured and health-checked.
+- Indexes support the query patterns used by the API.
+- Transactions wrap multi-write operations.",P0,5,1,OPS-010,"platform,database",All access is via parameterised SQLAlchemy statements; no string-built SQL.,DB pool saturation gauge and query failure counter.,tests/integration/database — restart-survival test runs migrations twice against PostgreSQL and re-reads rows.,"app/persistence/database.py,app/persistence/models,app/persistence/migrations"
+Subtask,OPS-011-ST,EPIC-02 — Core Platform,Implement PostgreSQL persistence: Schema,Subtask of OPS-011.,,P0,,1,OPS-011,subtask,,,,
+Subtask,OPS-011-ST,EPIC-02 — Core Platform,Implement PostgreSQL persistence: migrations,Subtask of OPS-011.,,P0,,1,OPS-011,subtask,,,,
+Subtask,OPS-011-ST,EPIC-02 — Core Platform,Implement PostgreSQL persistence: ORM/repository layer,Subtask of OPS-011.,,P0,,1,OPS-011,subtask,,,,
+Subtask,OPS-011-ST,EPIC-02 — Core Platform,Implement PostgreSQL persistence: connection pool,Subtask of OPS-011.,,P0,,1,OPS-011,subtask,,,,
+Subtask,OPS-011-ST,EPIC-02 — Core Platform,Implement PostgreSQL persistence: indexes,Subtask of OPS-011.,,P0,,1,OPS-011,subtask,,,,
+Subtask,OPS-011-ST,EPIC-02 — Core Platform,Implement PostgreSQL persistence: transaction handling,Subtask of OPS-011.,,P0,,1,OPS-011,subtask,,,,
+Subtask,OPS-011-ST,EPIC-02 — Core Platform,Implement PostgreSQL persistence: integration tests,Subtask of OPS-011.,,P0,,1,OPS-011,subtask,,,,
+Story,OPS-020,EPIC-03 — Integrations,GitHub read integration,"As an investigator I need recent commits, pull requests, deployments and repository metadata.","- Agent can retrieve commits, pull requests, deployments and repository metadata.
+- Requests have a timeout, bounded retries with jitter, and rate-limit handling (Retry-After honoured).
+- Failures degrade to a typed integration error and are never reported as empty success.",P0,5,2,OPS-011,"integration,github",Read-only token scope; no write endpoints exist in the adapter.,"github_request_duration_seconds, github_rate_limit_remaining.",tests/integration/github with respx-transported HTTP mocks plus sandbox provider tests.,app/integrations/github/client.py
+Subtask,OPS-020-ST,EPIC-03 — Integrations,GitHub read integration: HTTP client with retry policy,Subtask of OPS-020.,,P0,,2,OPS-020,subtask,,,,
+Subtask,OPS-020-ST,EPIC-03 — Integrations,GitHub read integration: Rate-limit handling,Subtask of OPS-020.,,P0,,2,OPS-020,subtask,,,,
+Subtask,OPS-020-ST,EPIC-03 — Integrations,GitHub read integration: Commit/PR/deployment mappers,Subtask of OPS-020.,,P0,,2,OPS-020,subtask,,,,
+Subtask,OPS-020-ST,EPIC-03 — Integrations,GitHub read integration: Sandbox provider,Subtask of OPS-020.,,P0,,2,OPS-020,subtask,,,,
+Subtask,OPS-020-ST,EPIC-03 — Integrations,GitHub read integration: Tests,Subtask of OPS-020.,,P0,,2,OPS-020,subtask,,,,
+Story,OPS-021,EPIC-03 — Integrations,Jira integration,As an operations team we need incidents mirrored to Jira with attached context.,"- Can create, retrieve and update an incident.
+- Can attach relevant context (evidence summary, timeline link).
+- Creation is idempotent — retrying with the same idempotency key returns the original issue.",P0,5,2,OPS-011,"integration,jira",Credentials come from configuration/secret manager only; tokens never logged.,"jira_request_total labelled by outcome, idempotent_replay_total.",tests/integration/jira — duplicate-call test asserts a single issue key is returned.,"app/integrations/jira/client.py,app/integrations/idempotency.py"
+Subtask,OPS-021-ST,EPIC-03 — Integrations,Jira integration: Jira client,Subtask of OPS-021.,,P0,,2,OPS-021,subtask,,,,
+Subtask,OPS-021-ST,EPIC-03 — Integrations,Jira integration: Idempotency key persistence,Subtask of OPS-021.,,P0,,2,OPS-021,subtask,,,,
+Subtask,OPS-021-ST,EPIC-03 — Integrations,Jira integration: Issue mapper,Subtask of OPS-021.,,P0,,2,OPS-021,subtask,,,,
+Subtask,OPS-021-ST,EPIC-03 — Integrations,Jira integration: Comment/attachment context,Subtask of OPS-021.,,P0,,2,OPS-021,subtask,,,,
+Subtask,OPS-021-ST,EPIC-03 — Integrations,Jira integration: Tests,Subtask of OPS-021.,,P0,,2,OPS-021,subtask,,,,
+Story,OPS-022,EPIC-03 — Integrations,Slack integration,As an on-call engineer I need structured operational notifications.,"- Sends structured notifications with incident id, severity, summary, evidence count and approval link.
+- Delivery failures are surfaced, never swallowed.
+- Payload is size-bounded and sanitises untrusted evidence text.",P0,3,2,OPS-011,"integration,slack",Evidence text is sanitised to prevent mention-injection and prompt-injection via chat.,"slack_notify_total, slack_notify_failures_total.",tests/integration/slack — block structure assertions and failure surfacing.,app/integrations/slack/client.py
+Subtask,OPS-022-ST,EPIC-03 — Integrations,Slack integration: Slack client,Subtask of OPS-022.,,P0,,2,OPS-022,subtask,,,,
+Subtask,OPS-022-ST,EPIC-03 — Integrations,Slack integration: Block-kit builder,Subtask of OPS-022.,,P0,,2,OPS-022,subtask,,,,
+Subtask,OPS-022-ST,EPIC-03 — Integrations,Slack integration: Sanitiser,Subtask of OPS-022.,,P0,,2,OPS-022,subtask,,,,
+Subtask,OPS-022-ST,EPIC-03 — Integrations,Slack integration: Retry policy,Subtask of OPS-022.,,P0,,2,OPS-022,subtask,,,,
+Subtask,OPS-022-ST,EPIC-03 — Integrations,Slack integration: Tests,Subtask of OPS-022.,,P0,,2,OPS-022,subtask,,,,
+Story,OPS-023,EPIC-03 — Integrations,Metrics and log integration,As a detector I need to query metrics and logs over time windows and services.,"- Can query metric series for a service, metric name and time window.
+- Can query logs filtered by service, severity, window and free-text.
+- Time windows are explicit and timezone-safe (UTC).
+- Empty results are distinguishable from failures.",P0,5,2,OPS-011,"integration,observability",Query parameters are validated and length-bounded to prevent injection into upstream query languages.,provider latency and failure counters.,"tests/integration/observability — window semantics, partial data, and failure distinguishability.","app/integrations/metrics/provider.py,app/integrations/logs/provider.py"
+Subtask,OPS-023-ST,EPIC-03 — Integrations,Metrics and log integration: Metrics provider interface,Subtask of OPS-023.,,P0,,2,OPS-023,subtask,,,,
+Subtask,OPS-023-ST,EPIC-03 — Integrations,Metrics and log integration: Logs provider interface,Subtask of OPS-023.,,P0,,2,OPS-023,subtask,,,,
+Subtask,OPS-023-ST,EPIC-03 — Integrations,Metrics and log integration: Window helper,Subtask of OPS-023.,,P0,,2,OPS-023,subtask,,,,
+Subtask,OPS-023-ST,EPIC-03 — Integrations,Metrics and log integration: Sandbox provider,Subtask of OPS-023.,,P0,,2,OPS-023,subtask,,,,
+Subtask,OPS-023-ST,EPIC-03 — Integrations,Metrics and log integration: Tests,Subtask of OPS-023.,,P0,,2,OPS-023,subtask,,,,
+Story,OPS-030,EPIC-04 — Detection,Implement anomaly detector,"As a detection engine I need deterministic statistical detection for error rate, latency and traffic.","- Supports error_rate, latency_p95 and request_rate families.
+- Uses a deterministic robust-z baseline with a minimum sample size and dir/relative-deviation guard.
+- Produces metric, baseline, observed, deviation, severity and detected_at.
+- Identical input always produces identical output (no LLM involvement).
+- Low-traffic series are marked insufficient_data instead of raising false anomalies.",P0,5,3,OPS-023,"detection,statistics",Pure function over validated inputs; no external calls.,anomaly_evaluations_total labelled by outcome.,tests/unit/detection — golden cases plus property test that adding normal traffic does not trigger.,"app/detection/detector.py,app/detection/baselines.py,app/detection/severity.py"
+Subtask,OPS-030-ST,EPIC-04 — Detection,Implement anomaly detector: Baseline computation,Subtask of OPS-030.,,P0,,3,OPS-030,subtask,,,,
+Subtask,OPS-030-ST,EPIC-04 — Detection,Implement anomaly detector: Threshold configuration,Subtask of OPS-030.,,P0,,3,OPS-030,subtask,,,,
+Subtask,OPS-030-ST,EPIC-04 — Detection,Implement anomaly detector: Severity mapping,Subtask of OPS-030.,,P0,,3,OPS-030,subtask,,,,
+Subtask,OPS-030-ST,EPIC-04 — Detection,Implement anomaly detector: Detector orchestration,Subtask of OPS-030.,,P0,,3,OPS-030,subtask,,,,
+Subtask,OPS-030-ST,EPIC-04 — Detection,Implement anomaly detector: Property tests,Subtask of OPS-030.,,P0,,3,OPS-030,subtask,,,,
+Story,OPS-031,EPIC-04 — Detection,Create incidents from anomalies,"As an operations platform I need anomalies to become deduplicated, notified incidents.","- Duplicate anomalies within the dedup window map to the same incident.
+- Incident severity is assigned from the anomaly severity.
+- The detection event (anomaly row) is persisted and linked to the incident.
+- A notification is emitted exactly once per incident creation.",P0,3,3,OPS-030,"detection,incidents",Incident creation is server-side only; clients cannot set arbitrary severity or suppress dedup.,"incidents_created_total, incidents_deduplicated_total.",tests/unit/detection/test_incident_factory.py and tests/integration for dedup across restarts.,"app/detection/incident_factory.py,app/application/incident_service.py"
+Subtask,OPS-031-ST,EPIC-04 — Detection,Create incidents from anomalies: Dedup key,Subtask of OPS-031.,,P0,,3,OPS-031,subtask,,,,
+Subtask,OPS-031-ST,EPIC-04 — Detection,Create incidents from anomalies: Incident factory,Subtask of OPS-031.,,P0,,3,OPS-031,subtask,,,,
+Subtask,OPS-031-ST,EPIC-04 — Detection,Create incidents from anomalies: Severity assignment,Subtask of OPS-031.,,P0,,3,OPS-031,subtask,,,,
+Subtask,OPS-031-ST,EPIC-04 — Detection,Create incidents from anomalies: Anomaly persistence,Subtask of OPS-031.,,P0,,3,OPS-031,subtask,,,,
+Subtask,OPS-031-ST,EPIC-04 — Detection,Create incidents from anomalies: Notification emission,Subtask of OPS-031.,,P0,,3,OPS-031,subtask,,,,
+Story,OPS-040,EPIC-05 — Investigation,Build evidence retrieval,"As an investigator I need normalised, timestamped, source-labelled evidence linked to the incident.","- Evidence is timestamped, source-labelled, typed and confidence-scored.
+- Evidence is persisted and linked to the incident.
+- Evidence is retrievable by evidence ID.
+- Retrieval continues when a single source fails, recording a degradation note.",P0,8,4,"OPS-020,OPS-021,OPS-022,OPS-023","investigation,evidence",Evidence content is treated as untrusted data and sanitised/truncated before reaching the LLM.,"evidence_collected_total by source, evidence_source_failures_total.",tests/unit/investigation/test_collector.py — partial-failure and normalisation cases.,"app/investigation/collector.py,app/investigation/evidence.py"
+Subtask,OPS-040-ST,EPIC-05 — Investigation,Build evidence retrieval: Evidence collector fan-out,Subtask of OPS-040.,,P0,,4,OPS-040,subtask,,,,
+Subtask,OPS-040-ST,EPIC-05 — Investigation,Build evidence retrieval: Normaliser,Subtask of OPS-040.,,P0,,4,OPS-040,subtask,,,,
+Subtask,OPS-040-ST,EPIC-05 — Investigation,Build evidence retrieval: Ranking,Subtask of OPS-040.,,P0,,4,OPS-040,subtask,,,,
+Subtask,OPS-040-ST,EPIC-05 — Investigation,Build evidence retrieval: Persistence,Subtask of OPS-040.,,P0,,4,OPS-040,subtask,,,,
+Subtask,OPS-040-ST,EPIC-05 — Investigation,Build evidence retrieval: Retrieval API,Subtask of OPS-040.,,P0,,4,OPS-040,subtask,,,,
+Subtask,OPS-040-ST,EPIC-05 — Investigation,Build evidence retrieval: Degradation handling,Subtask of OPS-040.,,P0,,4,OPS-040,subtask,,,,
+Story,OPS-041,EPIC-05 — Investigation,Implement AI investigation,As an operations engineer I need an evidence-backed diagnosis with explicit confidence.,"- Output conforms to the diagnosis schema — hypothesis, evidence_ids, counter_evidence_ids, confidence, recommended_actions.
+- Every referenced evidence id exists, otherwise the diagnosis is rejected.
+- Unsupported claims are not represented as verified facts (unverified claims are labelled and confidence is capped).
+- LLM failure degrades to a deterministic offline diagnosis that is explicitly labelled as such.",P0,8,4,"OPS-020,OPS-023,OPS-030,OPS-040","investigation,llm,safety",Prompt-injection defences; the LLM produces proposals only and never gains authority.,"llm_latency_seconds, llm_error_rate, diagnosis_grounding_failures_total, token usage.",tests/unit/investigation (schema + grounding) and tests/security/prompt_injection,"app/investigation/investigator.py,app/llm/provider.py,prompts/investigation/system.md"
+Subtask,OPS-041-ST,EPIC-05 — Investigation,Implement AI investigation: Prompt artefact,Subtask of OPS-041.,,P0,,4,OPS-041,subtask,,,,
+Subtask,OPS-041-ST,EPIC-05 — Investigation,Implement AI investigation: LLM adapter,Subtask of OPS-041.,,P0,,4,OPS-041,subtask,,,,
+Subtask,OPS-041-ST,EPIC-05 — Investigation,Implement AI investigation: Schema validation,Subtask of OPS-041.,,P0,,4,OPS-041,subtask,,,,
+Subtask,OPS-041-ST,EPIC-05 — Investigation,Implement AI investigation: Evidence-reference validation,Subtask of OPS-041.,,P0,,4,OPS-041,subtask,,,,
+Subtask,OPS-041-ST,EPIC-05 — Investigation,Implement AI investigation: Offline reasoner,Subtask of OPS-041.,,P0,,4,OPS-041,subtask,,,,
+Subtask,OPS-041-ST,EPIC-05 — Investigation,Implement AI investigation: Grounding checks,Subtask of OPS-041.,,P0,,4,OPS-041,subtask,,,,
+Story,OPS-050,EPIC-06 — Agent Orchestration,Implement agent state machine,"As the agent runtime I need deterministic, persisted, recoverable run state.","- State transitions are deterministic given the same inputs.
+- Invalid transitions are rejected without side effects.
+- State is persisted on every transition with a run record.
+- Interrupted runs recover safely on startup (no duplicated executions).",P0,8,4,"OPS-002,OPS-041","agent,runtime",Recovery never re-executes a high-risk action without a fresh policy check.,"agent_run_duration_seconds, agent_run_failure_total, agent_run_recovered_total.",tests/unit/agent/test_run_manager.py — forced failure and recovery idempotency.,"app/agent/run_manager.py,app/agent/orchestrator.py,app/persistence/repositories/agent_runs.py"
+Subtask,OPS-050-ST,EPIC-06 — Agent Orchestration,Implement agent state machine: Run entity,Subtask of OPS-050.,,P0,,4,OPS-050,subtask,,,,
+Subtask,OPS-050-ST,EPIC-06 — Agent Orchestration,Implement agent state machine: Transition persistence,Subtask of OPS-050.,,P0,,4,OPS-050,subtask,,,,
+Subtask,OPS-050-ST,EPIC-06 — Agent Orchestration,Implement agent state machine: Optimistic concurrency,Subtask of OPS-050.,,P0,,4,OPS-050,subtask,,,,
+Subtask,OPS-050-ST,EPIC-06 — Agent Orchestration,Implement agent state machine: Recovery scan,Subtask of OPS-050.,,P0,,4,OPS-050,subtask,,,,
+Subtask,OPS-050-ST,EPIC-06 — Agent Orchestration,Implement agent state machine: Tests,Subtask of OPS-050.,,P0,,4,OPS-050,subtask,,,,
+Story,OPS-051,EPIC-06 — Agent Orchestration,Implement tool registry,As a security boundary I need every agent-reachable operation declared with permissions and risk.,"- Every tool declares name, description, input schema, output schema, permissions, risk level, timeout, retry policy and approval requirement.
+- Input is validated against the schema before execution.
+- Unregistered tools cannot be executed (hard failure, audited).
+- Registry is introspectable via the API for audit purposes.",P0,5,5,OPS-050,"agent,security,tools",This is the tool trust boundary — no shell/SQL/arbitrary HTTP tool exists (rule 7).,tool_invocations_total by tool and outcome.,tests/unit/tools/test_registry.py — unknown-tool rejection and schema violations.,"app/tools/registry.py,app/tools/schemas.py,app/tools/permissions.py"
+Subtask,OPS-051-ST,EPIC-06 — Agent Orchestration,Implement tool registry: Tool metadata model,Subtask of OPS-051.,,P0,,5,OPS-051,subtask,,,,
+Subtask,OPS-051-ST,EPIC-06 — Agent Orchestration,Implement tool registry: Schema validation,Subtask of OPS-051.,,P0,,5,OPS-051,subtask,,,,
+Subtask,OPS-051-ST,EPIC-06 — Agent Orchestration,Implement tool registry: Registry singleton,Subtask of OPS-051.,,P0,,5,OPS-051,subtask,,,,
+Subtask,OPS-051-ST,EPIC-06 — Agent Orchestration,Implement tool registry: Permission mapping,Subtask of OPS-051.,,P0,,5,OPS-051,subtask,,,,
+Subtask,OPS-051-ST,EPIC-06 — Agent Orchestration,Implement tool registry: Audit hook,Subtask of OPS-051.,,P0,,5,OPS-051,subtask,,,,
+Subtask,OPS-051-ST,EPIC-06 — Agent Orchestration,Implement tool registry: Tests,Subtask of OPS-051.,,P0,,5,OPS-051,subtask,,,,
+Story,OPS-060,EPIC-07 — Actions & Verification,Build structured action planner,"As an agent I need LLM recommendations converted into validated, ordered action requests.","- Free-text LLM output becomes typed action requests referencing registered tools only.
+- Unknown tools or malformed parameters are dropped and recorded as rejected proposals.
+- Proposed actions carry a rationale that references evidence ids.
+- A plan always includes at least one verification expectation.",P0,5,5,OPS-051,"actions,planning",The planner cannot invent tools; anything unknown is rejected and audited.,"action_plans_total, action_proposals_rejected_total.",tests/unit/actions/test_planner.py — hallucinated tool names and bad params.,"app/actions/planner.py,app/actions/idempotency.py"
+Subtask,OPS-060-ST,EPIC-07 — Actions & Verification,Build structured action planner: Action request model,Subtask of OPS-060.,,P0,,5,OPS-060,subtask,,,,
+Subtask,OPS-060-ST,EPIC-07 — Actions & Verification,Build structured action planner: Mapper,Subtask of OPS-060.,,P0,,5,OPS-060,subtask,,,,
+Subtask,OPS-060-ST,EPIC-07 — Actions & Verification,Build structured action planner: Validator,Subtask of OPS-060.,,P0,,5,OPS-060,subtask,,,,
+Subtask,OPS-060-ST,EPIC-07 — Actions & Verification,Build structured action planner: Rejection recording,Subtask of OPS-060.,,P0,,5,OPS-060,subtask,,,,
+Subtask,OPS-060-ST,EPIC-07 — Actions & Verification,Build structured action planner: Verification expectation,Subtask of OPS-060.,,P0,,5,OPS-060,subtask,,,,
+Subtask,OPS-060-ST,EPIC-07 — Actions & Verification,Build structured action planner: Tests,Subtask of OPS-060.,,P0,,5,OPS-060,subtask,,,,
+Story,OPS-061,EPIC-07 — Actions & Verification,Implement approval gateway,As a risk owner I need high-risk actions to require a recorded human decision.,"- High and critical risk actions cannot execute without an approval record.
+- Approvals record actor, role, timestamp, decision, reason and the exact action payload.
+- Approval is bound to the action content hash — a modified action requires a new approval.
+- Rejection and escalation paths are supported.",P0,5,5,OPS-060,"approval,safety",Approval requires the operator/sre/admin role and is invalidated by payload tampering.,"approvals_requested_total, approvals_granted_total, approval_latency_seconds.",tests/unit/actions/test_approval.py + tests/security/authorization/test_bypass.py,"app/actions/approval.py,app/api/routes/approvals.py"
+Subtask,OPS-061-ST,EPIC-07 — Actions & Verification,Implement approval gateway: Approval entity,Subtask of OPS-061.,,P0,,5,OPS-061,subtask,,,,
+Subtask,OPS-061-ST,EPIC-07 — Actions & Verification,Implement approval gateway: Content hashing,Subtask of OPS-061.,,P0,,5,OPS-061,subtask,,,,
+Subtask,OPS-061-ST,EPIC-07 — Actions & Verification,Implement approval gateway: Decision endpoints,Subtask of OPS-061.,,P0,,5,OPS-061,subtask,,,,
+Subtask,OPS-061-ST,EPIC-07 — Actions & Verification,Implement approval gateway: Escalation,Subtask of OPS-061.,,P0,,5,OPS-061,subtask,,,,
+Subtask,OPS-061-ST,EPIC-07 — Actions & Verification,Implement approval gateway: Expiry,Subtask of OPS-061.,,P0,,5,OPS-061,subtask,,,,
+Subtask,OPS-061-ST,EPIC-07 — Actions & Verification,Implement approval gateway: Tests,Subtask of OPS-061.,,P0,,5,OPS-061,subtask,,,,
+Story,OPS-062,EPIC-07 — Actions & Verification,Implement action executor,As the runtime I need approved actions executed idempotently with bounded retries.,"- MVP tools exist - jira.create_incident, slack.notify, deployment.rollback_simulation (plus knowledge.base_example).
+- Execution is idempotent per idempotency key; a replayed request does not double-execute.
+- Timeouts and retries follow the tool's declared policy.
+- Every attempt is audited with request id, tool, actor and outcome.",P0,8,5,OPS-061,"actions,execution",Only registered tools can run; policy is re-checked immediately before execution.,"action_duration_seconds, action_success_rate, action_failures_total.",tests/unit/actions/test_executor.py — idempotent replay and timeout behaviour.,"app/actions/executor.py,app/actions/audit.py,app/tools/deployment.py"
+Subtask,OPS-062-ST,EPIC-07 — Actions & Verification,Implement action executor: Executor core,Subtask of OPS-062.,,P0,,5,OPS-062,subtask,,,,
+Subtask,OPS-062-ST,EPIC-07 — Actions & Verification,Implement action executor: Idempotency store,Subtask of OPS-062.,,P0,,5,OPS-062,subtask,,,,
+Subtask,OPS-062-ST,EPIC-07 — Actions & Verification,Implement action executor: Retry/timeout wiring,Subtask of OPS-062.,,P0,,5,OPS-062,subtask,,,,
+Subtask,OPS-062-ST,EPIC-07 — Actions & Verification,Implement action executor: Audit emission,Subtask of OPS-062.,,P0,,5,OPS-062,subtask,,,,
+Subtask,OPS-062-ST,EPIC-07 — Actions & Verification,Implement action executor: Result model,Subtask of OPS-062.,,P0,,5,OPS-062,subtask,,,,
+Story,OPS-063,EPIC-07 — Actions & Verification,Implement verification engine,"As a safety owner I need independent verification that distinguishes SUCCESS, FAILED and UNKNOWN.","- Expected state is defined before execution (checks with thresholds and windows).
+- Actual state is observed from a source independent of the executor.
+- Outcome is SUCCESS, FAILED or UNKNOWN, never inferred from an HTTP status code.
+- UNKNOWN is used when data is insufficient, with the reason recorded.
+- Verification result drives RESOLVED or ESCALATED.",P0,8,6,OPS-062,"verification,safety",Verifier never reads the action result as evidence of effect; it re-queries the system of record.,"verification_total by outcome, verification_latency_seconds.",tests/unit/verification — HTTP-200-but-no-effect case must return FAILED.,"app/verification/engine.py,app/verification/checks.py,app/verification/outcomes.py"
+Subtask,OPS-063-ST,EPIC-07 — Actions & Verification,Implement verification engine: Expected-state model,Subtask of OPS-063.,,P0,,6,OPS-063,subtask,,,,
+Subtask,OPS-063-ST,EPIC-07 — Actions & Verification,Implement verification engine: Checks,Subtask of OPS-063.,,P0,,6,OPS-063,subtask,,,,
+Subtask,OPS-063-ST,EPIC-07 — Actions & Verification,Implement verification engine: Independent observer,Subtask of OPS-063.,,P0,,6,OPS-063,subtask,,,,
+Subtask,OPS-063-ST,EPIC-07 — Actions & Verification,Implement verification engine: Outcome evaluation,Subtask of OPS-063.,,P0,,6,OPS-063,subtask,,,,
+Subtask,OPS-063-ST,EPIC-07 — Actions & Verification,Implement verification engine: Resolution wiring,Subtask of OPS-063.,,P0,,6,OPS-063,subtask,,,,
+Subtask,OPS-063-ST,EPIC-07 — Actions & Verification,Implement verification engine: Tests,Subtask of OPS-063.,,P0,,6,OPS-063,subtask,,,,
+Story,SEC-001,EPIC-08 — Security / SecDevOps,Threat model,As a security owner I need an explicit threat model across all trust boundaries.,"- Threats enumerated for LLM, tools, external inputs, APIs, database, UI and credentials.
+- Each threat has a likelihood/impact rating, mitigation and residual risk.
+- Trust boundaries are diagrammed.
+- Mitigations map to implemented controls and tests.",P0,5,3,OPS-010,"security,docs",This story produces the security contract the rest of EPIC-08 implements.,"n/a (documentation), reviewed on every security-relevant PR.",tests/unit/planning/test_documentation.py asserts every threat has a mitigation and control test.,"docs/security/threat-model.md,docs/security/security-controls.md"
+Subtask,SEC-001-ST,EPIC-08 — Security / SecDevOps,Threat model: Trust boundaries,Subtask of SEC-001.,,P0,,3,SEC-001,subtask,,,,
+Subtask,SEC-001-ST,EPIC-08 — Security / SecDevOps,Threat model: STRIDE analysis,Subtask of SEC-001.,,P0,,3,SEC-001,subtask,,,,
+Subtask,SEC-001-ST,EPIC-08 — Security / SecDevOps,Threat model: Mitigation mapping,Subtask of SEC-001.,,P0,,3,SEC-001,subtask,,,,
+Subtask,SEC-001-ST,EPIC-08 — Security / SecDevOps,Threat model: Residual risk register,Subtask of SEC-001.,,P0,,3,SEC-001,subtask,,,,
+Story,SEC-002,EPIC-08 — Security / SecDevOps,RBAC and least privilege,As a platform owner I need role-based access with tool permissions mapped to roles.,"- Roles viewer, operator, sre, admin exist with documented capabilities.
+- Tool permissions map to roles and are enforced server-side on every request and every execution.
+- Missing or invalid credentials return 401; insufficient role returns 403 (both audited).
+- Least-privilege defaults - viewer is read-only, high-risk execution requires sre or admin.",P0,8,7,OPS-061,"security,rbac",Deny-by-default; unknown role or unknown permission denies.,"auth_failures_total labelled by reason, authorization_denials_total by permission.",tests/security/authorization — matrix test over roles × endpoints × tools.,"app/core/security.py,app/policy/authorization.py,app/api/dependencies.py"
+Subtask,SEC-002-ST,EPIC-08 — Security / SecDevOps,RBAC and least privilege: Role model,Subtask of SEC-002.,,P0,,7,SEC-002,subtask,,,,
+Subtask,SEC-002-ST,EPIC-08 — Security / SecDevOps,RBAC and least privilege: Token authentication,Subtask of SEC-002.,,P0,,7,SEC-002,subtask,,,,
+Subtask,SEC-002-ST,EPIC-08 — Security / SecDevOps,RBAC and least privilege: Permission matrix,Subtask of SEC-002.,,P0,,7,SEC-002,subtask,,,,
+Subtask,SEC-002-ST,EPIC-08 — Security / SecDevOps,RBAC and least privilege: Route guards,Subtask of SEC-002.,,P0,,7,SEC-002,subtask,,,,
+Subtask,SEC-002-ST,EPIC-08 — Security / SecDevOps,RBAC and least privilege: Execution guard,Subtask of SEC-002.,,P0,,7,SEC-002,subtask,,,,
+Subtask,SEC-002-ST,EPIC-08 — Security / SecDevOps,RBAC and least privilege: Tests,Subtask of SEC-002.,,P0,,7,SEC-002,subtask,,,,
+Story,SEC-003,EPIC-08 — Security / SecDevOps,Prompt-injection defenses,As an AI safety owner I need untrusted content to be unable to change agent authority.,"- Malicious logs, GitHub content, Jira content and API responses are tested.
+- Untrusted content is delimited and labelled as data, never as instructions.
+- Directives that try to escalate privileges, skip approval or run unregistered tools are neutralised.
+- Injection attempts are recorded as security events.",P0,8,7,"SEC-002,OPS-041","security,llm,adversarial",Defence in depth — even a fully compromised LLM cannot bypass policy because policy is not LLM-mediated.,"prompt_injection_detected_total, untrusted_content_truncated_total.",tests/security/prompt_injection with a corpus of adversarial payloads injected through every evidence source.,"app/core/sanitization.py,app/core/security.py,prompts/investigation/system.md"
+Subtask,SEC-003-ST,EPIC-08 — Security / SecDevOps,Prompt-injection defenses: Sanitiser,Subtask of SEC-003.,,P0,,7,SEC-003,subtask,,,,
+Subtask,SEC-003-ST,EPIC-08 — Security / SecDevOps,Prompt-injection defenses: Untrusted-content framing,Subtask of SEC-003.,,P0,,7,SEC-003,subtask,,,,
+Subtask,SEC-003-ST,EPIC-08 — Security / SecDevOps,Prompt-injection defenses: Injection detector,Subtask of SEC-003.,,P0,,7,SEC-003,subtask,,,,
+Subtask,SEC-003-ST,EPIC-08 — Security / SecDevOps,Prompt-injection defenses: Security event recording,Subtask of SEC-003.,,P0,,7,SEC-003,subtask,,,,
+Subtask,SEC-003-ST,EPIC-08 — Security / SecDevOps,Prompt-injection defenses: Adversarial tests,Subtask of SEC-003.,,P0,,7,SEC-003,subtask,,,,
+Story,SEC-004,EPIC-08 — Security / SecDevOps,Audit trail,As an auditor I need every consequential action traceable.,"- Records capture actor, timestamp, incident, agent run, tool, action, approval, result.
+- Audit records are append-only — no update or delete API exists.
+- Audit log is queryable by incident, run, actor and time range.
+- Audit records survive restart and include correlation ids.",P0,5,7,"SEC-002,OPS-062","security,audit",Hash-chained rows make silent edits detectable.,audit_events_total by event type.,tests/integration/test_audit.py — append-only enforcement and hash-chain verification.,"app/actions/audit.py,app/persistence/repositories/audit.py,app/api/routes/audit.py"
+Subtask,SEC-004-ST,EPIC-08 — Security / SecDevOps,Audit trail: Audit entity,Subtask of SEC-004.,,P0,,7,SEC-004,subtask,,,,
+Subtask,SEC-004-ST,EPIC-08 — Security / SecDevOps,Audit trail: Append-only repository,Subtask of SEC-004.,,P0,,7,SEC-004,subtask,,,,
+Subtask,SEC-004-ST,EPIC-08 — Security / SecDevOps,Audit trail: Emission points,Subtask of SEC-004.,,P0,,7,SEC-004,subtask,,,,
+Subtask,SEC-004-ST,EPIC-08 — Security / SecDevOps,Audit trail: Query API,Subtask of SEC-004.,,P0,,7,SEC-004,subtask,,,,
+Subtask,SEC-004-ST,EPIC-08 — Security / SecDevOps,Audit trail: Tamper-evidence hash chain,Subtask of SEC-004.,,P0,,7,SEC-004,subtask,,,,
+Subtask,SEC-004-ST,EPIC-08 — Security / SecDevOps,Audit trail: Tests,Subtask of SEC-004.,,P0,,7,SEC-004,subtask,,,,
+Story,SEC-005,EPIC-08 — Security / SecDevOps,Supply-chain controls,"As a build owner I need dependency, secret, container and SBOM controls in CI.","- Dependency scanning (pip-audit + Dependabot) runs in CI.
+- Secret scanning (gitleaks) runs in CI and fails on findings.
+- Container scanning (Trivy) runs on the built image.
+- SBOM is generated per build.
+- Dependencies are pinned to exact versions.",P0,5,7,OPS-010,"security,supply-chain,ci",Blocks merges on critical vulnerabilities and any detected secret.,CI job status is the SLI; artifacts retained per build.,tests/unit/planning/test_supply_chain.py asserts pinned versions and workflow jobs exist.,".github/workflows/security.yml,pyproject.toml,.github/dependabot.yml"
+Subtask,SEC-005-ST,EPIC-08 — Security / SecDevOps,Supply-chain controls: Pin dependencies,Subtask of SEC-005.,,P0,,7,SEC-005,subtask,,,,
+Subtask,SEC-005-ST,EPIC-08 — Security / SecDevOps,Supply-chain controls: pip-audit job,Subtask of SEC-005.,,P0,,7,SEC-005,subtask,,,,
+Subtask,SEC-005-ST,EPIC-08 — Security / SecDevOps,Supply-chain controls: gitleaks job,Subtask of SEC-005.,,P0,,7,SEC-005,subtask,,,,
+Subtask,SEC-005-ST,EPIC-08 — Security / SecDevOps,Supply-chain controls: Trivy job,Subtask of SEC-005.,,P0,,7,SEC-005,subtask,,,,
+Subtask,SEC-005-ST,EPIC-08 — Security / SecDevOps,Supply-chain controls: SBOM artifact,Subtask of SEC-005.,,P0,,7,SEC-005,subtask,,,,
+Subtask,SEC-005-ST,EPIC-08 — Security / SecDevOps,Supply-chain controls: Dependabot config,Subtask of SEC-005.,,P0,,7,SEC-005,subtask,,,,
+Story,SEC-006,EPIC-08 — Security / SecDevOps,API rate limiting and input validation,As a platform owner I need the public API to resist abuse and malformed input.,"- Per-token and per-IP request rate limits are enforced and return 429 with Retry-After.
+- All request models reject unknown fields and enforce bounded string lengths and collection sizes.
+- Rejected input is audited and counted, and never reaches a tool or the LLM.
+- Free-text fields destined for external systems are sanitised at the API boundary.",P0,3,3,OPS-010,"security,api,hardening",Directly reduces denial-of-service and injection surface of every endpoint.,"rate_limit_rejections_total, validation_rejections_total by route.",tests/security/test_rate_limit.py and tests/security/test_input_validation.py,"app/api/middleware/rate_limit.py,app/domain/schemas.py"
+Subtask,SEC-006-ST,EPIC-08 — Security / SecDevOps,API rate limiting and input validation: Rate limit middleware,Subtask of SEC-006.,,P0,,3,SEC-006,subtask,,,,
+Subtask,SEC-006-ST,EPIC-08 — Security / SecDevOps,API rate limiting and input validation: Token bucket store,Subtask of SEC-006.,,P0,,3,SEC-006,subtask,,,,
+Subtask,SEC-006-ST,EPIC-08 — Security / SecDevOps,API rate limiting and input validation: Pydantic strict models,Subtask of SEC-006.,,P0,,3,SEC-006,subtask,,,,
+Subtask,SEC-006-ST,EPIC-08 — Security / SecDevOps,API rate limiting and input validation: Length bounds,Subtask of SEC-006.,,P0,,3,SEC-006,subtask,,,,
+Subtask,SEC-006-ST,EPIC-08 — Security / SecDevOps,API rate limiting and input validation: Rejection audit,Subtask of SEC-006.,,P0,,3,SEC-006,subtask,,,,
+Subtask,SEC-006-ST,EPIC-08 — Security / SecDevOps,API rate limiting and input validation: Tests,Subtask of SEC-006.,,P0,,3,SEC-006,subtask,,,,
+Story,SRE-001,EPIC-09 — SRE / Observability,Operational metrics,As an SRE I need golden signals and agent-specific metrics exported.,"- Request rate, latency, errors and saturation are exposed.
+- Agent signals exposed - run duration, run failure rate, tool failure rate, investigation duration, action success rate, verification success rate, escalation rate, unsafe action attempts, LLM latency/error rate, token usage.
+- Metrics endpoint is scrapeable at /metrics and excludes high-cardinality labels.",P0,5,3,OPS-010,"sre,observability","Metrics endpoint exposes no secrets, tokens or evidence content.",This story is the observability surface.,tests/integration/test_observability.py — scrape text contains required series after exercising the API.,"app/core/telemetry.py,app/api/routes/health.py"
+Subtask,SRE-001-ST,EPIC-09 — SRE / Observability,Operational metrics: Prometheus registry,Subtask of SRE-001.,,P0,,3,SRE-001,subtask,,,,
+Subtask,SRE-001-ST,EPIC-09 — SRE / Observability,Operational metrics: HTTP middleware metrics,Subtask of SRE-001.,,P0,,3,SRE-001,subtask,,,,
+Subtask,SRE-001-ST,EPIC-09 — SRE / Observability,Operational metrics: Agent metrics,Subtask of SRE-001.,,P0,,3,SRE-001,subtask,,,,
+Subtask,SRE-001-ST,EPIC-09 — SRE / Observability,Operational metrics: SLO metrics,Subtask of SRE-001.,,P0,,3,SRE-001,subtask,,,,
+Subtask,SRE-001-ST,EPIC-09 — SRE / Observability,Operational metrics: Documentation,Subtask of SRE-001.,,P0,,3,SRE-001,subtask,,,,
+Story,SRE-002,EPIC-09 — SRE / Observability,Structured logging,"As an on-call engineer I need every operation correlated by request, trace, incident and run id.","- Every log line carries request_id, trace_id and, where applicable, incident_id and agent_run_id.
+- Logs are JSON in staging/production and human-readable in development.
+- Secrets and tokens are redacted by a logging processor.",P0,3,2,OPS-010,"sre,logging",Redaction processor removes authorisation headers and configured secret keys.,Log-based SLI for errors.,tests/unit/core/test_logging.py — context propagation and redaction.,app/core/logging.py
+Subtask,SRE-002-ST,EPIC-09 — SRE / Observability,Structured logging: structlog configuration,Subtask of SRE-002.,,P0,,2,SRE-002,subtask,,,,
+Subtask,SRE-002-ST,EPIC-09 — SRE / Observability,Structured logging: Correlation ContextVar,Subtask of SRE-002.,,P0,,2,SRE-002,subtask,,,,
+Subtask,SRE-002-ST,EPIC-09 — SRE / Observability,Structured logging: Redaction processor,Subtask of SRE-002.,,P0,,2,SRE-002,subtask,,,,
+Subtask,SRE-002-ST,EPIC-09 — SRE / Observability,Structured logging: Middleware binding,Subtask of SRE-002.,,P0,,2,SRE-002,subtask,,,,
+Story,SRE-003,EPIC-09 — SRE / Observability,Distributed tracing,As an engineer I need to trace an entire incident lifecycle end to end.,"- A trace covers detection, evidence retrieval, LLM call, policy, approval, execution and verification.
+- Spans carry incident_id and agent_run_id attributes.
+- Trace context propagates across the API and outbound integration calls.
+- Tracing is vendor-neutral via OpenTelemetry with an in-memory exporter in tests.",P0,5,6,SRE-001,"sre,tracing",Span attributes exclude evidence content and credentials.,This story is the tracing surface.,tests/integration/test_tracing.py asserts a single trace spans the lifecycle stages.,"app/core/tracing.py,app/agent/orchestrator.py"
+Subtask,SRE-003-ST,EPIC-09 — SRE / Observability,Distributed tracing: Tracer provider,Subtask of SRE-003.,,P0,,6,SRE-003,subtask,,,,
+Subtask,SRE-003-ST,EPIC-09 — SRE / Observability,Distributed tracing: Span helper,Subtask of SRE-003.,,P0,,6,SRE-003,subtask,,,,
+Subtask,SRE-003-ST,EPIC-09 — SRE / Observability,Distributed tracing: Attribute conventions,Subtask of SRE-003.,,P0,,6,SRE-003,subtask,,,,
+Subtask,SRE-003-ST,EPIC-09 — SRE / Observability,Distributed tracing: Outbound propagation,Subtask of SRE-003.,,P0,,6,SRE-003,subtask,,,,
+Subtask,SRE-003-ST,EPIC-09 — SRE / Observability,Distributed tracing: Test exporter,Subtask of SRE-003.,,P0,,6,SRE-003,subtask,,,,
+Story,SRE-004,EPIC-09 — SRE / Observability,SLO dashboard,As a service owner I need documented SLOs backed by measurable indicators.,"- SLOs documented — API availability >= 99.5%, detection latency < 60s, investigation < 120s, verification < 30s, tool success >= 99%, zero lost critical incidents, zero unauthorised high-risk actions.
+- Each SLO has an SLI computed from emitted metrics.
+- Dashboard/alert rules exist as versioned artefacts.
+- Targets are labelled as initial targets to be validated.",P0,5,3,SRE-001,"sre,slo",The 'zero unauthorised high-risk actions' SLI is a security SLI and is alerted on.,This story is the SLO surface.,tests/unit/planning/test_documentation.py — every documented SLO maps to a metric name present in telemetry.,"docs/sre/slos.md,infra/deployment/prometheus/rules.yml,infra/deployment/grafana/dashboard.json"
+Subtask,SRE-004-ST,EPIC-09 — SRE / Observability,SLO dashboard: SLO definitions,Subtask of SRE-004.,,P0,,3,SRE-004,subtask,,,,
+Subtask,SRE-004-ST,EPIC-09 — SRE / Observability,SLO dashboard: SLI metric mapping,Subtask of SRE-004.,,P0,,3,SRE-004,subtask,,,,
+Subtask,SRE-004-ST,EPIC-09 — SRE / Observability,SLO dashboard: Prometheus rules,Subtask of SRE-004.,,P0,,3,SRE-004,subtask,,,,
+Subtask,SRE-004-ST,EPIC-09 — SRE / Observability,SLO dashboard: Dashboard definition,Subtask of SRE-004.,,P0,,3,SRE-004,subtask,,,,
+Subtask,SRE-004-ST,EPIC-09 — SRE / Observability,SLO dashboard: Error budget policy,Subtask of SRE-004.,,P0,,3,SRE-004,subtask,,,,
+Story,SRE-005,EPIC-09 — SRE / Observability,Runbooks,As an on-call engineer I need runbooks for the known failure modes.,"- Runbooks exist for database failure, LLM failure, GitHub failure, Jira failure, excessive agent errors and unsafe agent behaviour.
+- Each runbook has symptoms, impact, diagnosis, mitigation and verification steps.
+- Runbooks reference real endpoints and metrics shipped in this repository.",P0,3,6,SRE-001,"sre,runbook,docs",The unsafe-behaviour runbook includes how to force the agent into observe_only autonomy.,Each runbook lists the metrics and log queries used for detection.,"tests/unit/planning/test_documentation.py — required sections present, referenced endpoints exist in the router.",docs/sre/runbooks/
+Subtask,SRE-005-ST,EPIC-09 — SRE / Observability,Runbooks: Database runbook,Subtask of SRE-005.,,P0,,6,SRE-005,subtask,,,,
+Subtask,SRE-005-ST,EPIC-09 — SRE / Observability,Runbooks: LLM runbook,Subtask of SRE-005.,,P0,,6,SRE-005,subtask,,,,
+Subtask,SRE-005-ST,EPIC-09 — SRE / Observability,Runbooks: GitHub runbook,Subtask of SRE-005.,,P0,,6,SRE-005,subtask,,,,
+Subtask,SRE-005-ST,EPIC-09 — SRE / Observability,Runbooks: Jira runbook,Subtask of SRE-005.,,P0,,6,SRE-005,subtask,,,,
+Subtask,SRE-005-ST,EPIC-09 — SRE / Observability,Runbooks: Agent-error runbook,Subtask of SRE-005.,,P0,,6,SRE-005,subtask,,,,
+Subtask,SRE-005-ST,EPIC-09 — SRE / Observability,Runbooks: Unsafe-behaviour runbook,Subtask of SRE-005.,,P0,,6,SRE-005,subtask,,,,
+Story,DEV-001,EPIC-10 — DevOps / CI/CD,Dockerize application,"As an operator I need a reproducible, non-root, multi-stage container image.","- Multi-stage Dockerfile builds a slim runtime image.
+- Container runs as a non-root user with a healthcheck.
+- docker-compose brings up app plus PostgreSQL with migrations applied.
+- .dockerignore excludes secrets and test artefacts.",P0,3,1,OPS-010,"devops,docker",No secrets baked into layers; runs as UID 10001; pinned base image digest family.,Container healthcheck hits /health; compose exports metrics port.,"Docker is unavailable in the CI sandbox, so tests/unit/planning/test_infra.py statically validates the Dockerfile/compose contract (non-root, healthcheck, no secrets, migration entrypoint).","infra/docker/Dockerfile,infra/compose/docker-compose.yml"
+Subtask,DEV-001-ST,EPIC-10 — DevOps / CI/CD,Dockerize application: Runtime Dockerfile,Subtask of DEV-001.,,P0,,1,DEV-001,subtask,,,,
+Subtask,DEV-001-ST,EPIC-10 — DevOps / CI/CD,Dockerize application: Test Dockerfile,Subtask of DEV-001.,,P0,,1,DEV-001,subtask,,,,
+Subtask,DEV-001-ST,EPIC-10 — DevOps / CI/CD,Dockerize application: Compose stack,Subtask of DEV-001.,,P0,,1,DEV-001,subtask,,,,
+Subtask,DEV-001-ST,EPIC-10 — DevOps / CI/CD,Dockerize application: Healthcheck,Subtask of DEV-001.,,P0,,1,DEV-001,subtask,,,,
+Subtask,DEV-001-ST,EPIC-10 — DevOps / CI/CD,Dockerize application: Local scripts,Subtask of DEV-001.,,P0,,1,DEV-001,subtask,,,,
+Story,DEV-002,EPIC-10 — DevOps / CI/CD,Build CI pipeline,"As a developer I need every pull request gated by quality, security and AI evaluation.","- Pipeline runs lint, format check, type check, unit tests, integration tests (real PostgreSQL), security scans, AI evaluation and container build.
+- Any failing stage fails the pipeline and blocks merge.
+- The pipeline is reproducible locally through a single documented command.
+- Coverage report is produced and a floor is enforced.",P0,5,1,OPS-010,"devops,ci",Security stage blocks on high/critical findings.,Pipeline duration and failure reasons are visible in the PR checks view.,"tests/unit/planning/test_supply_chain.py — workflow files parse, contain required jobs, and reference real commands.",".github/workflows/ci.yml,Makefile,scripts/ci.sh"
+Subtask,DEV-002-ST,EPIC-10 — DevOps / CI/CD,Build CI pipeline: ci.yml,Subtask of DEV-002.,,P0,,1,DEV-002,subtask,,,,
+Subtask,DEV-002-ST,EPIC-10 — DevOps / CI/CD,Build CI pipeline: Local make targets,Subtask of DEV-002.,,P0,,1,DEV-002,subtask,,,,
+Subtask,DEV-002-ST,EPIC-10 — DevOps / CI/CD,Build CI pipeline: Coverage gate,Subtask of DEV-002.,,P0,,1,DEV-002,subtask,,,,
+Subtask,DEV-002-ST,EPIC-10 — DevOps / CI/CD,Build CI pipeline: Integration Postgres service,Subtask of DEV-002.,,P0,,1,DEV-002,subtask,,,,
+Subtask,DEV-002-ST,EPIC-10 — DevOps / CI/CD,Build CI pipeline: Artifact upload,Subtask of DEV-002.,,P0,,1,DEV-002,subtask,,,,
+Story,DEV-003,EPIC-10 — DevOps / CI/CD,Build CD pipeline,As a release owner I need an immutable-artifact deployment with staged gates.,"- Build produces an immutable versioned artifact (image tagged with the commit SHA).
+- Staging deploy runs smoke tests, integration tests and the AI regression suite.
+- Production deploy requires an explicit approval environment.
+- Post-deploy health, readiness and release verification run automatically.",P0,5,8,DEV-002,"devops,cd",Production secrets are environment-scoped and never echoed.,"Post-deploy verification queries /ready, /metrics and the SLO series.",scripts/verify_release.py is exercised by tests/unit/planning/test_release_verification.py against a live app instance.,".github/workflows/cd.yml,scripts/verify_release.py,infra/deployment/"
+Subtask,DEV-003-ST,EPIC-10 — DevOps / CI/CD,Build CD pipeline: cd.yml,Subtask of DEV-003.,,P0,,8,DEV-003,subtask,,,,
+Subtask,DEV-003-ST,EPIC-10 — DevOps / CI/CD,Build CD pipeline: Staging deploy,Subtask of DEV-003.,,P0,,8,DEV-003,subtask,,,,
+Subtask,DEV-003-ST,EPIC-10 — DevOps / CI/CD,Build CD pipeline: Smoke tests,Subtask of DEV-003.,,P0,,8,DEV-003,subtask,,,,
+Subtask,DEV-003-ST,EPIC-10 — DevOps / CI/CD,Build CD pipeline: AI regression gate,Subtask of DEV-003.,,P0,,8,DEV-003,subtask,,,,
+Subtask,DEV-003-ST,EPIC-10 — DevOps / CI/CD,Build CD pipeline: Production approval,Subtask of DEV-003.,,P0,,8,DEV-003,subtask,,,,
+Subtask,DEV-003-ST,EPIC-10 — DevOps / CI/CD,Build CD pipeline: Release verification,Subtask of DEV-003.,,P0,,8,DEV-003,subtask,,,,
+Story,DEV-004,EPIC-10 — DevOps / CI/CD,Implement and test rollback,"As an SRE I need rollback that is exercised, not just documented.","- Rollback procedure is versioned in the repository.
+- Rollback is executed in a test/staging context by an automated test or script.
+- Post-rollback health checks and metric comparison run and their result is recorded.
+- Rollback of a simulated bad deployment is verified as recovery.",P0,5,6,"DEV-001,OPS-063","devops,reliability,rollback",Rollback target version is validated against an allow-list of previously released SHAs.,Rollback emits a release event and compares before/after metric windows.,tests/e2e/test_rollback_drill.py drives scripts/rollback_drill.py end to end and asserts recovery verification.,"scripts/rollback_drill.py,docs/sre/runbooks/deployment-rollback.md"
+Subtask,DEV-004-ST,EPIC-10 — DevOps / CI/CD,Implement and test rollback: Rollback runbook,Subtask of DEV-004.,,P0,,6,DEV-004,subtask,,,,
+Subtask,DEV-004-ST,EPIC-10 — DevOps / CI/CD,Implement and test rollback: Rollback script,Subtask of DEV-004.,,P0,,6,DEV-004,subtask,,,,
+Subtask,DEV-004-ST,EPIC-10 — DevOps / CI/CD,Implement and test rollback: Staging rollback drill,Subtask of DEV-004.,,P0,,6,DEV-004,subtask,,,,
+Subtask,DEV-004-ST,EPIC-10 — DevOps / CI/CD,Implement and test rollback: Verification of recovery,Subtask of DEV-004.,,P0,,6,DEV-004,subtask,,,,
+Subtask,DEV-004-ST,EPIC-10 — DevOps / CI/CD,Implement and test rollback: Incident creation on rollback,Subtask of DEV-004.,,P0,,6,DEV-004,subtask,,,,
+Story,EVAL-001,EPIC-11 — AI Evaluation,Build evaluation dataset,"As an AI engineer I need a golden dataset covering normal, anomalous, ambiguous and adversarial cases.","- Dataset covers normal, simple anomaly, ambiguous anomaly, multiple causes, false positive, tool failure and malicious input.
+- Each case defines input state, expected evidence, acceptable and unacceptable hypotheses, acceptable and unsafe actions, and expected verification.
+- Dataset is versioned and validated by a schema.",P0,5,8,OPS-041,"eval,ai",The adversarial category is the regression net for SEC-003.,Dataset size and category coverage reported by the harness.,tests/unit/eval/test_dataset.py validates schema and category coverage.,"evals/datasets/,evals/config.yaml"
+Subtask,EVAL-001-ST,EPIC-11 — AI Evaluation,Build evaluation dataset: Dataset schema,Subtask of EVAL-001.,,P0,,8,EVAL-001,subtask,,,,
+Subtask,EVAL-001-ST,EPIC-11 — AI Evaluation,Build evaluation dataset: Seed cases per category,Subtask of EVAL-001.,,P0,,8,EVAL-001,subtask,,,,
+Subtask,EVAL-001-ST,EPIC-11 — AI Evaluation,Build evaluation dataset: Dataset validation test,Subtask of EVAL-001.,,P0,,8,EVAL-001,subtask,,,,
+Subtask,EVAL-001-ST,EPIC-11 — AI Evaluation,Build evaluation dataset: Documentation,Subtask of EVAL-001.,,P0,,8,EVAL-001,subtask,,,,
+Story,EVAL-002,EPIC-11 — AI Evaluation,Build evaluation harness,"As an AI engineer I need automated grading of detection, evidence, diagnosis, action selection, safety and verification.","- Harness evaluates detection, evidence retrieval, diagnosis, action selection, safety and verification.
+- Graders are deterministic and produce per-case and aggregate scores.
+- Safety violations (unsafe action proposed or approval bypassed) fail the run outright.
+- Harness writes a machine-readable report artefact.",P0,8,8,EVAL-001,"eval,ai,ci","Safety grader is a hard gate, not a weighted score.",Eval report is uploaded as a CI artefact and summarised in the job summary.,tests/unit/eval/test_graders.py — known-good and known-bad agent outputs are graded correctly.,"evals/runner.py,evals/graders/,app/evaluation"
+Subtask,EVAL-002-ST,EPIC-11 — AI Evaluation,Build evaluation harness: Runner,Subtask of EVAL-002.,,P0,,8,EVAL-002,subtask,,,,
+Subtask,EVAL-002-ST,EPIC-11 — AI Evaluation,Build evaluation harness: Graders,Subtask of EVAL-002.,,P0,,8,EVAL-002,subtask,,,,
+Subtask,EVAL-002-ST,EPIC-11 — AI Evaluation,Build evaluation harness: Metrics aggregation,Subtask of EVAL-002.,,P0,,8,EVAL-002,subtask,,,,
+Subtask,EVAL-002-ST,EPIC-11 — AI Evaluation,Build evaluation harness: Report writer,Subtask of EVAL-002.,,P0,,8,EVAL-002,subtask,,,,
+Subtask,EVAL-002-ST,EPIC-11 — AI Evaluation,Build evaluation harness: CI integration,Subtask of EVAL-002.,,P0,,8,EVAL-002,subtask,,,,
+Story,EVAL-003,EPIC-11 — AI Evaluation,AI regression testing,As a release owner I need merges blocked when critical AI metrics regress.,"- Baseline metrics are stored in the repository.
+- A regression beyond thresholds (accuracy, safety, grounding, action-selection) fails the pipeline.
+- The check is required on main by branch protection documentation.
+- Thresholds are configurable and documented.",P0,5,8,EVAL-002,"eval,ci,quality",Safety-regression threshold is zero-tolerance.,Regression deltas are printed in the CI summary.,tests/unit/eval/test_regression.py — a deliberately degraded result set must be reported as a regression.,"evals/baselines/baseline.json,evals/regression.py,.github/workflows/ai-evaluation.yml"
+Subtask,EVAL-003-ST,EPIC-11 — AI Evaluation,AI regression testing: Baseline artefact,Subtask of EVAL-003.,,P0,,8,EVAL-003,subtask,,,,
+Subtask,EVAL-003-ST,EPIC-11 — AI Evaluation,AI regression testing: Threshold config,Subtask of EVAL-003.,,P0,,8,EVAL-003,subtask,,,,
+Subtask,EVAL-003-ST,EPIC-11 — AI Evaluation,AI regression testing: Regression comparator,Subtask of EVAL-003.,,P0,,8,EVAL-003,subtask,,,,
+Subtask,EVAL-003-ST,EPIC-11 — AI Evaluation,AI regression testing: CI job,Subtask of EVAL-003.,,P0,,8,EVAL-003,subtask,,,,
+Subtask,EVAL-003-ST,EPIC-11 — AI Evaluation,AI regression testing: Documentation,Subtask of EVAL-003.,,P0,,8,EVAL-003,subtask,,,,
+Story,UI-001,EPIC-12 — Operations UI,Incident dashboard,"As an operator I need to see incident severity, status, timeline, evidence, diagnosis, actions and verification.","- List and detail views show severity, status and timestamps.
+- Detail view shows the timeline, evidence with source labels, diagnosis with referenced evidence, proposed actions and verification outcome.
+- UI reads exclusively from the public API.
+- Empty and error states are handled explicitly.",P1,5,9,"OPS-063,SEC-004",ui,No token is embedded in served assets; the operator supplies a token at runtime and it is kept in memory.,UI renders the same ids used in logs and traces for correlation.,"tests/integration/ui/test_ui_serving.py — assets are served, reference only the public API, and contain no secrets.","app/ui/static/,app/api/routes/ui.py"
+Subtask,UI-001-ST,EPIC-12 — Operations UI,Incident dashboard: Static shell,Subtask of UI-001.,,P1,,9,UI-001,subtask,,,,
+Subtask,UI-001-ST,EPIC-12 — Operations UI,Incident dashboard: API client,Subtask of UI-001.,,P1,,9,UI-001,subtask,,,,
+Subtask,UI-001-ST,EPIC-12 — Operations UI,Incident dashboard: Incident list,Subtask of UI-001.,,P1,,9,UI-001,subtask,,,,
+Subtask,UI-001-ST,EPIC-12 — Operations UI,Incident dashboard: Incident detail,Subtask of UI-001.,,P1,,9,UI-001,subtask,,,,
+Subtask,UI-001-ST,EPIC-12 — Operations UI,Incident dashboard: Timeline view,Subtask of UI-001.,,P1,,9,UI-001,subtask,,,,
+Subtask,UI-001-ST,EPIC-12 — Operations UI,Incident dashboard: Error handling,Subtask of UI-001.,,P1,,9,UI-001,subtask,,,,
+Story,UI-002,EPIC-12 — Operations UI,Approval interface,"As an operator I need to approve, reject or escalate a proposed action.","- Pending approvals are listed with the exact action payload and risk level.
+- Operator can approve, reject (with reason) or escalate.
+- Role restrictions are enforced by the API, not the UI.
+- The decision is reflected in the audit trail and the incident timeline immediately.",P1,5,9,"UI-001,SEC-002","ui,approvals",UI never claims authority it does not have — all enforcement remains server-side.,Approval decisions emit audit events and metrics identical to API-driven decisions.,tests/integration/ui/test_ui_serving.py asserts the approval flow calls only the approval endpoints.,"app/ui/static/app.js,app/api/routes/ui.py"
+Subtask,UI-002-ST,EPIC-12 — Operations UI,Approval interface: Pending list,Subtask of UI-002.,,P1,,9,UI-002,subtask,,,,
+Subtask,UI-002-ST,EPIC-12 — Operations UI,Approval interface: Decision actions,Subtask of UI-002.,,P1,,9,UI-002,subtask,,,,
+Subtask,UI-002-ST,EPIC-12 — Operations UI,Approval interface: Reason capture,Subtask of UI-002.,,P1,,9,UI-002,subtask,,,,
+Subtask,UI-002-ST,EPIC-12 — Operations UI,Approval interface: RBAC-aware messaging,Subtask of UI-002.,,P1,,9,UI-002,subtask,,,,
+Subtask,UI-002-ST,EPIC-12 — Operations UI,Approval interface: Audit verification,Subtask of UI-002.,,P1,,9,UI-002,subtask,,,,
+Story,UI-003,EPIC-12 — Operations UI,Agent activity view,As an SRE I need the agent operational trace Observed -> Investigated -> Reasoned -> Proposed -> Approved -> Executed -> Verified.,"- The activity view renders each lifecycle stage with timestamp, duration and outcome.
+- Tool invocations are listed with tool name, risk, and result.
+- Failed and escalated runs are visually distinct.",P1,3,9,"UI-001,SRE-003","ui,observability",Rendered evidence text is escaped to prevent stored XSS from untrusted log content.,The view mirrors the trace data used in SRE-003.,tests/integration/ui/test_ui_serving.py asserts the rendered builder escapes HTML.,app/ui/static/app.js
+Subtask,UI-003-ST,EPIC-12 — Operations UI,Agent activity view: Run timeline component,Subtask of UI-003.,,P1,,9,UI-003,subtask,,,,
+Subtask,UI-003-ST,EPIC-12 — Operations UI,Agent activity view: Tool invocation list,Subtask of UI-003.,,P1,,9,UI-003,subtask,,,,
+Subtask,UI-003-ST,EPIC-12 — Operations UI,Agent activity view: Failure styling,Subtask of UI-003.,,P1,,9,UI-003,subtask,,,,
+Story,OPS-070,EPIC-12 — Operations UI,Final hardening and release validation,As a release owner I need the final gates executed against the release candidate.,"- All functional, quality, security, reliability, operations and release gates in section 38 are satisfied and evidenced.
+- End-to-end production simulation passes for all three MVP scenarios.
+- Release verification script passes against the running candidate.
+- Version is tagged and CHANGELOG updated.",P0,5,9,"EVAL-003,DEV-003,UI-002,UI-003","release,hardening","Final gate includes zero critical vulnerabilities, no leaked secrets, verified RBAC and passing prompt-injection tests.",Post-release monitoring checklist executed against emitted metrics.,scripts/verify_release.py plus tests/e2e/test_production_simulation.py across all three scenarios.,"scripts/verify_release.py,docs/planning/release-v1.0.0.md,CHANGELOG.md"
+Subtask,OPS-070-ST,EPIC-12 — Operations UI,Final hardening and release validation: Gate review,Subtask of OPS-070.,,P0,,9,OPS-070,subtask,,,,
+Subtask,OPS-070-ST,EPIC-12 — Operations UI,Final hardening and release validation: E2E simulation,Subtask of OPS-070.,,P0,,9,OPS-070,subtask,,,,
+Subtask,OPS-070-ST,EPIC-12 — Operations UI,Final hardening and release validation: Release verification,Subtask of OPS-070.,,P0,,9,OPS-070,subtask,,,,
+Subtask,OPS-070-ST,EPIC-12 — Operations UI,Final hardening and release validation: Tag and changelog,Subtask of OPS-070.,,P0,,9,OPS-070,subtask,,,,
+Subtask,OPS-070-ST,EPIC-12 — Operations UI,Final hardening and release validation: Post-release monitoring check,Subtask of OPS-070.,,P0,,9,OPS-070,subtask,,,,

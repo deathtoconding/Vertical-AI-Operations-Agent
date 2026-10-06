@@ -1,0 +1,183 @@
+[build-system]
+requires = ["setuptools>=68", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "ai-operations-agent"
+version = "1.0.0"
+description = "Vertical AI Operations Agent — a policy-governed, evidence-backed SaaS operations engineer"
+readme = "README.md"
+requires-python = ">=3.11,<3.13"
+license = { text = "Apache-2.0" }
+authors = [{ name = "AI Operations Agent Team" }]
+keywords = ["ai", "agents", "sre", "sreops", "llm", "operations", "sre-automation"]
+
+# ---------------------------------------------------------------------------
+# Runtime dependencies.
+# SEC-005 (supply chain): every direct dependency is pinned to an exact version.
+# Renovate/Dependabot may raise PRs, but nothing floats implicitly.
+# ---------------------------------------------------------------------------
+dependencies = [
+  "fastapi==0.142.2",
+  "uvicorn[standard]==0.54.0",
+  "pydantic==2.13.5",
+  "pydantic-settings==2.15.0",
+  "SQLAlchemy[asyncio]==2.1.3",
+  "greenlet==3.2.4",
+  "alembic==1.20.0",
+  "psycopg[binary]==3.3.6",
+  "httpx==0.28.1",
+  "structlog==26.1.0",
+  "prometheus-client==0.26.0",
+  "opentelemetry-api==1.45.0",
+  "opentelemetry-sdk==1.45.0",
+  "PyYAML==6.0.3",
+]
+
+[project.optional-dependencies]
+dev = [
+  "pytest==9.1.1",
+  "pytest-asyncio==1.4.0",
+  "pytest-cov==7.1.0",
+  "respx==0.23.1",
+  "ruff==0.16.10",
+  "mypy==2.4.0",
+  "types-PyYAML==6.0.12.20260906",
+  "bandit==1.9.4",
+  "pip-audit==2.10.1",
+]
+# Local, docker-free PostgreSQL used by `make pg` and the integration tests.
+localdb = ["pgserver==0.1.4"]
+# LLM provider SDKs are optional: the agent runs against any OpenAI-compatible
+# endpoint over plain HTTP, so no vendor SDK is required at runtime.
+llm = []
+
+[project.scripts]
+aiops = "app.cli:main"
+"aiops-backlog" = "app.cli:backlog_main"
+
+[project.urls]
+Repository = "https://github.com/deathtoconding/Vertical-AI-Operations-Agent"
+
+[tool.setuptools.packages.find]
+include = ["app*"]
+exclude = ["tests*", "evals*"]
+
+# ---------------------------------------------------------------------------
+# Ruff — lint + format (DEV-002 pipeline stage 1 & 2)
+# ---------------------------------------------------------------------------
+[tool.ruff]
+line-length = 100
+target-version = "py311"
+src = ["app", "tests", "evals", "scripts"]
+
+[tool.ruff.lint]
+select = [
+  "E",   # pycodestyle errors
+  "W",   # pycodestyle warnings
+  "F",   # pyflakes
+  "I",   # isort
+  "B",   # flake8-bugbear
+  "C4",  # comprehensions
+  "UP",  # pyupgrade
+  "S",   # flake8-bandit (SAST signal in CI)
+  "T20", # no print statements in app code
+  "RET", # return semantics
+  "SIM", # simplify
+  "PTH", # pathlib
+  "RUF",
+]
+ignore = [
+  "S101",  # assert is allowed in tests (per-file-ignores below restrict it)
+  "B008",  # FastAPI Depends() in defaults is idiomatic
+  "RUF001", "RUF002", "RUF003",  # unicode dashes are used in docs strings
+]
+
+[tool.ruff.lint.per-file-ignores]
+# ``app/cli.py`` is the operator entry point: a containerised server must bind all interfaces,
+# which is exactly what S104 warns about. ``app/integrations/http.py`` uses the standard RNG for
+# retry-backoff jitter, which is not a security decision (S311). Both are suppressed here rather
+# than inline, because a line carrying both ruff's ``# noqa`` and bandit's ``# nosec`` markers is
+# a syntax ruff warns about; bandit keeps its own inline marker with the justification.
+"app/cli.py" = ["S104"]
+"app/integrations/http.py" = ["S311"]
+"tests/**" = ["S101", "S105", "S106", "T20", "S108"]
+"evals/**" = ["T20", "S101"]
+"scripts/**" = ["T20", "S101", "S603", "S607"]
+"app/ui/**" = ["S101"]
+
+[tool.ruff.lint.isort]
+known-first-party = ["app", "tests", "evals"]
+
+# ---------------------------------------------------------------------------
+# mypy — type checking (DEV-002 pipeline stage 2)
+# ---------------------------------------------------------------------------
+[tool.mypy]
+python_version = "3.11"
+files = ["app", "tests", "evals", "scripts"]
+strict = true
+warn_unreachable = true
+warn_unused_ignores = true
+disallow_untyped_defs = true
+no_implicit_optional = true
+plugins = []
+exclude = ["app/persistence/migrations/versions/"]
+
+[[tool.mypy.overrides]]
+module = ["pgserver.*", "prometheus_client.*", "opentelemetry.*"]
+ignore_missing_imports = true
+
+[[tool.mypy.overrides]]
+module = ["tests.*"]
+# Test bodies are not shipped, and an annotation on every test function and fixture adds noise
+# without catching anything mypy would not already see in the code under test. Production code
+# (`app/`, `scripts/`, `evals/`) stays under the full strict settings above.
+disallow_untyped_defs = false
+disallow_incomplete_defs = false
+disallow_untyped_decorators = false
+
+# ---------------------------------------------------------------------------
+# pytest — unit / integration / e2e / security / eval layers (section 28)
+# ---------------------------------------------------------------------------
+[tool.pytest.ini_options]
+minversion = "8.0"
+testpaths = ["tests"]
+asyncio_mode = "auto"
+asyncio_default_fixture_loop_scope = "function"
+addopts = [
+  "-ra",
+  "--strict-markers",
+  "--strict-config",
+  "--import-mode=importlib",
+]
+markers = [
+  "story(id): maps a test to a backlog story key (traceability, Definition of Done)",
+  "unit: fast, deterministic, no external systems",
+  "integration: real component boundary (database, HTTP adapters)",
+  "e2e: full incident lifecycle across the HTTP API",
+  "security: authorization / prompt-injection / secret-exposure suites",
+  "eval: AI evaluation harness (kept separate from normal tests, section 29)",
+  "slow: takes more than a few seconds",
+]
+filterwarnings = [
+  "error::DeprecationWarning:app.*",
+]
+
+[tool.coverage.run]
+source = ["app"]
+branch = true
+omit = ["app/persistence/migrations/*", "app/ui/*"]
+
+[tool.coverage.report]
+show_missing = true
+skip_covered = true
+exclude_lines = [
+  "pragma: no cover",
+  "if TYPE_CHECKING:",
+  "raise NotImplementedError",
+  "@abstractmethod",
+]
+
+[tool.bandit]
+exclude_dirs = ["tests", "evals", ".venv"]
+targets = ["app", "scripts"]

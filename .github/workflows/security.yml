@@ -1,0 +1,131 @@
+name: security
+
+# SEC-005 — supply chain and DevSecOps controls. Everything here is blocking: a finding fails
+# the workflow, because a scanner nobody acts on is decoration.
+on:
+  push:
+    branches: [main]
+  pull_request:
+  schedule:
+    - cron: "0 3 * * 1"  # weekly, so new advisories are caught between merges
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  secrets:
+    name: secret scanning (gitleaks)
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          fetch-depth: 0
+      - name: gitleaks
+        uses: gitleaks/gitleaks-action@v2
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GITLEAKS_CONFIG: configs/gitleaks.toml
+          GITLEAKS_ENABLE_COMMENTS: "false"
+      - name: Annotate the findings on the check run
+        # The action writes results.sarif and fails with "see job summary for details". A finding
+        # that only exists in a log file is a finding most reviewers never see, so it is re-emitted
+        # as a check annotation attached to the file and line — readable in the diff, and through
+        # the API for anyone triaging. The step runs even when the scan failed (`--no-fail`): the
+        # scanner is the gate, and this step exists so a red run explains itself.
+        if: always()
+        run: python scripts/report_sarif_findings.py results.sarif --label gitleaks --no-fail
+      - name: Local hygiene check (duplicate guard, runs without network)
+        run: bash scripts/check_repo_hygiene.sh
+
+  dependencies:
+    name: dependency audit (pip-audit)
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.11"
+          cache: pip
+      - run: |
+          python -m pip install --upgrade pip
+          pip install -e ".[dev]"
+      - name: Verify every direct dependency is pinned to an exact version
+        run: python scripts/check_pins.py
+      - name: Audit the locked dependency set
+        run: pip-audit --strict --requirement requirements.lock
+
+  sast:
+    name: static analysis (bandit)
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.11"
+          cache: pip
+      - run: |
+          python -m pip install --upgrade pip
+          pip install -e ".[dev]"
+      # `--exit-zero` keeps bandit from failing the step on informational findings: the graded
+      # gate is the checker below, which is the step that decides what medium/high means. Without
+      # it a single LOW-severity note would end the job before the threshold was ever applied.
+      - run: bandit -q --exit-zero -c pyproject.toml -r app scripts -f json -o bandit.json
+      - name: Fail on medium/high findings
+        run: python scripts/check_bandit.py bandit.json
+
+  container:
+    name: container scan (trivy) + SBOM
+
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      security-events: write
+    timeout-minutes: 40
+    steps:
+      - uses: actions/checkout@v5
+      - name: Build image
+        run: docker build -f infra/docker/Dockerfile -t aiops-agent:scan .
+      - name: Trivy image scan (fails on HIGH/CRITICAL with a fix available)
+        # Every ref here must resolve, including the ones an action pulls in: `@0.29.0` is not a
+        # tag (trivy-action publishes `vX.Y.Z`), and `v0.29.0`/`v0.30.0` still fail at "Set up job"
+        # because they reference `aquasecurity/setup-trivy@v0.2.2`, which does not exist. v0.36.0
+        # pins setup-trivy and actions/cache by SHA, both of which resolve; the inputs below were
+        # checked against its action.yaml.
+        uses: aquasecurity/trivy-action@v0.36.0
+        with:
+          image-ref: aiops-agent:scan
+          format: sarif
+          output: trivy.sarif
+          severity: HIGH,CRITICAL
+          ignore-unfixed: true
+          exit-code: "1"
+      - name: Annotate the vulnerabilities on the check run
+        # The image scan fails through its exit code alone; the report it writes names the
+        # vulnerable package, so the same reporter that annotates gitleaks annotates trivy.
+        if: always()
+        run: python scripts/report_sarif_findings.py trivy.sarif --label trivy --no-fail
+      - uses: github/codeql-action/upload-sarif@v4
+        if: always()
+        with:
+          sarif_file: trivy.sarif
+      - name: SBOM (CycloneDX-compatible JSON, kept as a build artefact)
+        uses: actions/setup-python@v6
+        with:
+          python-version: "3.11"
+      - run: |
+          python -m pip install -e ".[dev]"
+          python scripts/generate_sbom.py --output sbom.json
+      - uses: actions/upload-artifact@v4
+        with:
+          name: sbom
+          path: sbom.json

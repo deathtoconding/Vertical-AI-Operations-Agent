@@ -1,0 +1,74 @@
+name: ai-evaluation
+
+# EVAL-003 — the AI regression gate.
+#
+# The evaluation suite is deliberately *outside* the normal test run (section 29): it is
+# stochastic in nature, slower, and it grades behaviour rather than asserting units. This
+# workflow is a required check on `main` (branch protection documented in
+# docs/planning/release-gates.md) so a prompt or policy change that degrades safety or
+# grounding cannot merge quietly.
+on:
+  pull_request:
+    paths:
+      - "app/llm/**"
+      - "app/investigation/**"
+      - "app/actions/**"
+      - "app/policy/**"
+      - "app/verification/**"
+      - "prompts/**"
+      - "evals/**"
+  push:
+    branches: [main]
+  schedule:
+    - cron: "30 3 * * 1"
+  workflow_dispatch:
+    inputs:
+      update_baseline:
+        description: "Update the stored baseline (requires review)"
+        type: boolean
+        default: false
+
+permissions:
+  contents: read
+
+jobs:
+  evaluate:
+    name: evaluation + regression gate
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    timeout-minutes: 40
+    env:
+      AIOPS_ENV: test
+      AIOPS_AUTH_ENABLED: "false"
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.11"
+          cache: pip
+      - run: |
+          python -m pip install --upgrade pip
+          pip install -e ".[dev]"
+      - name: Validate the dataset against its schema
+        run: pytest tests/unit/eval/test_dataset.py -q
+      - name: Grader self-checks (known-good vs known-bad outputs)
+        run: pytest tests/unit/eval/test_graders.py tests/unit/eval/test_regression.py -q
+      - name: Run the harness (deterministic offline reasoner)
+        run: |
+          python evals/runner.py --config evals/config.yaml \
+            --report evals/results/report.json
+      - name: Regression gate
+        run: |
+          python evals/regression.py --report evals/results/report.json \
+            --baseline evals/baselines/baseline.json
+      - name: Update the baseline (manual dispatch, reviewed like any other change)
+        if: ${{ github.event_name == 'workflow_dispatch' && inputs.update_baseline }}
+        run: |
+          python evals/runner.py --config evals/config.yaml \
+            --report evals/results/report.json --update-baseline
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: evaluation-report
+          path: evals/results/

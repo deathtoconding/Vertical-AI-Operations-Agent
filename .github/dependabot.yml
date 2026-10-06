@@ -1,0 +1,34 @@
+# SEC-005 — dependency updates are proposed by the bot, reviewed and merged by a human.
+# Automerge is deliberately not configured: a dependency change is a code change.
+version: 2
+updates:
+  - package-ecosystem: pip
+    directory: "/"
+    schedule:
+      interval: weekly
+      day: monday
+    open-pull-requests-limit: 5
+    labels: ["dependencies", "security"]
+    commit-message:
+      prefix: "build"
+    groups:
+      runtime-dependencies:
+        patterns: ["fastapi*", "pydantic*", "sqlalchemy*", "alembic*", "uvicorn*", "httpx*"]
+      dev-dependencies:
+        patterns: ["pytest*", "ruff*", "mypy*", "bandit*", "pip-audit*", "respx*"]
+
+  - package-ecosystem: docker
+    directory: "/infra/docker"
+    schedule:
+      interval: weekly
+    labels: ["dependencies", "security"]
+    commit-message:
+      prefix: "build"
+
+  - package-ecosystem: github-actions
+    directory: "/"
+    schedule:
+      interval: weekly
+    labels: ["dependencies", "security"]
+    commit-message:
+      prefix: "ci"

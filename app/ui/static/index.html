@@ -1,0 +1,83 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Operations Agent Console</title>
+  <link rel="stylesheet" href="/ui/app.css" />
+</head>
+<body>
+  <header>
+    <div class="brand">
+      <span class="dot" id="health-dot" aria-hidden="true"></span>
+      <h1>Operations Agent Console</h1>
+    </div>
+    <div class="meta">
+      <span id="mode-badge" class="badge">mode: …</span>
+      <span id="version-badge" class="badge">v…</span>
+      <button id="refresh" type="button">Refresh</button>
+    </div>
+  </header>
+
+  <section id="banner" class="banner hidden" role="status"></section>
+
+  <main>
+    <section class="panel">
+      <div class="panel-head">
+        <h2>Scenarios</h2>
+        <p class="hint">
+          Scenario injection is a <strong>simulation</strong>: it resets the operated-system
+          sandbox and every payload stays labelled <code>simulated</code>. It is refused when
+          the app runs against live integrations.
+        </p>
+      </div>
+      <div class="row">
+        <button data-scenario="A" class="primary" type="button">A · API error spike</button>
+        <button data-scenario="B" type="button">B · Latency spike</button>
+        <button data-scenario="C" type="button">C · Payment failures</button>
+        <button data-scenario="normal" type="button">Reset (healthy)</button>
+        <label class="check"><input type="checkbox" id="orchestrate" checked /> run the agent</label>
+      </div>
+    </section>
+
+    <section class="grid">
+      <div class="panel">
+        <div class="panel-head">
+          <h2>Incidents</h2>
+          <span id="incident-counts" class="muted"></span>
+        </div>
+        <ul id="incident-list" class="list"></ul>
+      </div>
+
+      <div class="panel">
+        <div class="panel-head">
+          <h2>Run timeline</h2>
+          <span id="run-state" class="muted"></span>
+        </div>
+        <div id="run-detail" class="detail empty">Select an incident to inspect its run.</div>
+      </div>
+    </section>
+
+    <section class="panel">
+      <div class="panel-head">
+        <h2>Approvals</h2>
+        <p class="hint">
+          High-risk actions (for example <code>deployment.rollback_simulation</code>) never
+          execute without a human decision bound to the exact payload hash shown here.
+        </p>
+      </div>
+      <ul id="approval-list" class="list"></ul>
+    </section>
+  </main>
+
+  <footer>
+    <span>
+      The model proposes; policy authorises; a human approves high risk; verification decides
+      whether it actually worked.
+    </span>
+    <span id="correlation" class="muted"></span>
+  </footer>
+
+  <script src="/ui/app.js"></script>
+</body>
+</html>

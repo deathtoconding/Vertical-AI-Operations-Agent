@@ -1,0 +1,194 @@
+name: ci
+
+# DEV-002 — the pull-request pipeline. Every stage is blocking: a failing stage fails the
+# workflow, and a red workflow blocks merge (branch protection documented in
+# docs/planning/release-gates.md). `make ci` runs the same stages locally.
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+env:
+  PIP_DISABLE_PIP_VERSION_CHECK: "1"
+  AIOPS_ENV: test
+  AIOPS_AUTH_ENABLED: "false"
+
+jobs:
+  quality:
+    name: lint · format · typecheck
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.11"
+          cache: pip
+      - name: Install (pinned)
+        run: |
+          python -m pip install --upgrade pip
+          pip install -e ".[dev]"
+      - name: Repository hygiene (large files, conflict markers, secrets)
+        run: bash scripts/check_repo_hygiene.sh
+      - name: Format check
+        run: ruff format --check app tests evals scripts
+      - name: Lint
+        run: ruff check app tests evals scripts
+      - name: Type check (strict)
+        run: mypy
+
+  test:
+    name: tests (postgres ${{ matrix.postgres }})
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    timeout-minutes: 40
+    strategy:
+      fail-fast: false
+      matrix:
+        postgres: ["16"]
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: aiops
+          POSTGRES_PASSWORD: aiops
+          POSTGRES_DB: aiops
+        ports: ["5432:5432"]
+        options: >-
+          --health-cmd "pg_isready -U aiops"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+    env:
+      AIOPS_DATABASE_URL: postgresql+psycopg://aiops:aiops@localhost:5432/aiops
+      # The schema-dependent suites skip when no test database is configured — and a skipped
+      # integration test looks exactly like a passing one. They ran nowhere in CI until the
+      # coverage floor caught it.
+      AIOPS_TEST_DATABASE_URL: postgresql+psycopg://aiops:aiops@localhost:5432/aiops
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.11"
+          cache: pip
+      - run: |
+          python -m pip install --upgrade pip
+          pip install -e ".[dev]"
+      - name: Prepare the report directory
+        run: mkdir -p artifacts
+      - name: Plan contract (backlog + documentation)
+        run: pytest tests/unit/planning -q --junitxml=artifacts/junit-planning.xml
+      - name: Unit tests
+        run: pytest tests/unit -q -m "unit or not integration" --junitxml=artifacts/junit-unit.xml
+      - name: Migrations
+        run: |
+          alembic -c app/persistence/alembic.ini upgrade head
+          # Prove the schema the suites are about to use is the schema they expect: a migration
+          # that silently does nothing would leave them testing yesterday's tables.
+          alembic -c app/persistence/alembic.ini current | grep -q '(head)'
+      - name: Integration tests (real PostgreSQL)
+        run: pytest tests/integration -q --junitxml=artifacts/junit-integration.xml
+      - name: Security tests
+        run: pytest tests/security -q --junitxml=artifacts/junit-security.xml
+      - name: End-to-end tests
+        run: pytest tests/e2e -q --junitxml=artifacts/junit-e2e.xml
+      - name: Coverage floor
+        run: |
+          pytest tests/unit tests/integration -q --cov=app --cov-report=term-missing \
+            --cov-report=xml --cov-fail-under=75 --junitxml=artifacts/junit-coverage.xml
+      - name: Annotate test failures on the check run
+        # The first release-candidate pipeline failed with a step name and an exit code: which
+        # test broke, and why, was only in the log. The reports are collected here and re-emitted
+        # as annotations, so a red run explains itself on the pull request.
+        if: always()
+        run: python scripts/report_test_failures.py "artifacts/junit-*.xml" --label ci
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: test-reports
+          path: |
+            artifacts/junit-*.xml
+            coverage.xml
+
+  build:
+    name: container build
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    timeout-minutes: 30
+    needs: [quality]
+    steps:
+      - uses: actions/checkout@v5
+      - name: Build image (tagged with the commit SHA — immutable artifact, DEV-003)
+        run: |
+          docker build -f infra/docker/Dockerfile \
+            -t aiops-agent:${{ github.sha }} \
+            -t aiops-agent:ci .
+      - name: Smoke-test the image against a real database (boots, migrates, serves)
+        # `scripts/entrypoint.sh` refuses to start without AIOPS_DATABASE_URL, and it migrates
+        # before it execs uvicorn — so a smoke test without a database asserts nothing about the
+        # release candidate and fails anyway. This brings up a throwaway PostgreSQL, lets the
+        # image apply the real schema, then checks liveness, readiness (which reports the database
+        # connection) and that the migration actually landed.
+        run: |
+          set -eu
+          network=aiops-smoke
+          docker network create "$network"
+          annotate() {
+            printf '::error::%s\n' "$(printf '%s' "$1" | sed -e 's/%/%25/g')"
+          }
+          cleanup() {
+            status=$?
+            if [ "$status" -ne 0 ]; then
+              # A container that never answers is diagnosed from its own output. The job log is not
+              # readable through the API; the annotations are, so each line of the last words of
+              # each container becomes one — which is how this step explained its first failure.
+              annotate "smoke test failed (exit ${status}); container output follows"
+              docker inspect --format '{{.Name}} state={{.State.Status}} exit={{.State.ExitCode}}' \
+                aiops-smoke aiops-smoke-db 2>/dev/null \
+                | while IFS= read -r line; do annotate "$line"; done || true
+              docker logs aiops-smoke 2>&1 | tail -25 \
+                | while IFS= read -r line; do annotate "app: ${line}"; done || true
+              docker logs aiops-smoke-db 2>&1 | tail -10 \
+                | while IFS= read -r line; do annotate "db: ${line}"; done || true
+            fi
+            docker rm -f aiops-smoke aiops-smoke-db >/dev/null 2>&1 || true
+            docker network rm "$network" >/dev/null 2>&1 || true
+          }
+          trap cleanup EXIT
+          docker run -d --name aiops-smoke-db --network "$network" \
+            -e POSTGRES_USER=aiops -e POSTGRES_PASSWORD=aiops -e POSTGRES_DB=aiops postgres:16
+          for _ in $(seq 1 30); do
+            if docker exec aiops-smoke-db pg_isready -U aiops >/dev/null 2>&1; then break; fi
+            sleep 2
+          done
+          docker run -d --name aiops-smoke --network "$network" -p 18000:8000 \
+            -e AIOPS_ENV=test \
+            -e AIOPS_DATABASE_URL="postgresql+psycopg://aiops:aiops@aiops-smoke-db:5432/aiops" \
+            aiops-agent:ci
+          for _ in $(seq 1 45); do
+            if curl -fsS http://localhost:18000/health >/dev/null; then break; fi
+            sleep 2
+          done
+          curl -fsS http://localhost:18000/health | tee /dev/stderr | grep -q '"status"'
+          curl -fsS http://localhost:18000/ready | tee /dev/stderr | grep -q '"status"'
+          docker exec aiops-smoke-db psql -U aiops -d aiops -tAc \
+            "select version_num from alembic_version" | grep -q .
+      - name: Save image for the CD workflow
+        run: docker save aiops-agent:${{ github.sha }} -o /tmp/aiops-image.tar
+      - uses: actions/upload-artifact@v4
+        with:
+          name: image
+          path: /tmp/aiops-image.tar
+          retention-days: 5

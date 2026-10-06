@@ -1,0 +1,31 @@
+# Production deployment profile (DEV-001 / SEC-005).
+#
+# This file contains **no secrets** — `scripts/load_profile.py` refuses to load a profile that
+# names a token, key or password. Credentials (`AIOPS_ADMIN_TOKEN_HASH`, webhook URLs, the Jira
+# and payments tokens, the LLM key) arrive as environment variables at run time from the
+# platform's secret store.
+#
+# Loaded by the container entrypoint via `AIOPS_CONFIG_FILE=configs/production.yaml`:
+#
+#     eval "$(python scripts/load_profile.py --file configs/production.yaml)"
+#
+# Boot validation in `app/core/config.py` still fails closed: production refuses to start with
+# sandbox integrations, an empty token set, or `trust_proxy` unset (threat model T-15, T-31).
+environment:
+  env: production
+  log_json: true
+  log_level: INFO
+  integrations_mode: live
+  # Requests arrive through the platform's ingress; without this the app would trust a forged
+  # X-Forwarded-For header for rate limiting and audit attribution.
+  trust_proxy: true
+  rate_limit_requests_per_minute: 240
+  rate_limit_burst: 60
+  autonomy_level: observe
+  request_timeout_seconds: 10
+  action_timeout_seconds: 30
+  detection_window_minutes: 60
+  detection_dedup_window_minutes: 30
+  max_rollbacks_per_hour: 2
+  cors_origins: https://ops.example.invalid
+  service_name: aiops-agent
