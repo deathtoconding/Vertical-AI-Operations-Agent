@@ -161,3 +161,31 @@ def fixed_now() -> Any:
     import datetime as dt
 
     return dt.datetime(2026, 10, 6, 12, 0, 0, tzinfo=dt.UTC)
+
+
+# --------------------------------------------------------------------------- #
+# The application under test
+# --------------------------------------------------------------------------- #
+
+
+@pytest_asyncio.fixture
+async def api(settings: Settings, engine: Any) -> AsyncIterator[Any]:
+    """The real application over ASGI (middleware, auth and transactions included).
+
+    Defined at the top level so the integration, security and end-to-end suites all run the
+    same object. It depends on ``engine``, which is what creates the schema and skips the test
+    when no PostgreSQL is available.
+    """
+    from tests.support.app import running_app
+
+    async with running_app(settings) as handle:
+        yield handle
+
+
+@pytest.fixture
+def live_server(settings: Settings, engine: Any) -> Iterator[Any]:
+    """uvicorn on a real socket, for tests that drive HTTP *scripts* rather than the ASGI app."""
+    from tests.support.app import live_server as serve
+
+    with serve(settings) as handle:
+        yield handle

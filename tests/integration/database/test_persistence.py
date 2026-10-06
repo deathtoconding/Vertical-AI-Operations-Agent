@@ -181,7 +181,13 @@ async def test_migrations_are_idempotent(database_url: str) -> None:
         )
         assert int(result.scalar_one()) >= 11
         result = await connection.execute(text("SELECT version_num FROM alembic_version"))
-        assert str(result.scalar_one()) == "0001_initial_schema"
+        # Compared against the revision scripts rather than a hard-coded id: the assertion is
+        # "the database is at head", and a literal here silently rots every time a migration
+        # is added (which is exactly how this expectation went stale before).
+        from alembic.script import ScriptDirectory
+
+        expected_head = ScriptDirectory.from_config(config).get_current_head()
+        assert str(result.scalar_one()) == expected_head
     await engine.dispose()
 
 
