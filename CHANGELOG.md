@@ -34,6 +34,14 @@ are recorded because each one made a control either fail for the wrong reason or
   scanner already writes and re-emits every result as a check annotation (rule, file, line, and —
   for gitleaks — the commit and `.gitleaksignore` fingerprint; never the secret), so a finding is
   visible on the check run and readable through the API.
+- **A red `ci` run did not say what failed.** The test job stopped with a step name and an exit
+  code; the failing test and its assertion were only in the log. Every pytest invocation now
+  writes JUnit XML and `scripts/report_test_failures.py` re-emits the failures as check
+  annotations (test id, file, line, assertion message), with the reports kept as an artefact.
+- **The container smoke test asserted the wrong thing — and could never pass.** The image's
+  entrypoint refuses to start without `AIOPS_DATABASE_URL`, so the probe ran against a container
+  that had already exited. The build job now starts a throwaway PostgreSQL, lets the image apply
+  the real schema, and checks liveness, readiness and that the migration landed.
 - **The README's own examples were reported as credentials.** The default `curl-auth-header` rule
   reads `curl … -H 'Authorization: Bearer <value>'` as a leaked token, and the README documents the
   sandbox tokens exactly that way — four findings on the release commit, because the README is not

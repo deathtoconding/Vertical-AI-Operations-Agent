@@ -48,7 +48,7 @@ ship. Nothing in this table is a claim that has not been executed at least once 
 | End-to-end suite (three MVP scenarios over HTTP) | `pytest tests/e2e -q` | lifecycle, failure path, recovery |
 | AI evaluation + regression gate | `python evals/runner.py --check-regression` | `evals/baselines/baseline.json`, report artefact |
 | Static analysis and supply chain | `ruff`, `mypy --strict`, `bandit`, `pip-audit`, `trivy`, `gitleaks` | `security.yml` job log, SBOM artefact |
-| Container build and boot smoke test | `docker build` + `/health` probe | `ci.yml` build job |
+| Container build and boot smoke test | `docker build`, then the image migrates a throwaway PostgreSQL and answers `/health` + `/ready` | `ci.yml` build job |
 | Release verification against the candidate | `python scripts/verify_release.py --base-url …` | `release-report.json` |
 | Rollback drill against the candidate | `python scripts/rollback_drill.py --json …` | `rollback-report.json` |
 

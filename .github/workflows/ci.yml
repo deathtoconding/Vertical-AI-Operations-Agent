@@ -81,27 +81,37 @@ jobs:
       - run: |
           python -m pip install --upgrade pip
           pip install -e ".[dev]"
+      - name: Prepare the report directory
+        run: mkdir -p artifacts
       - name: Plan contract (backlog + documentation)
-        run: pytest tests/unit/planning -q
+        run: pytest tests/unit/planning -q --junitxml=artifacts/junit-planning.xml
       - name: Unit tests
-        run: pytest tests/unit -q -m "unit or not integration"
+        run: pytest tests/unit -q -m "unit or not integration" --junitxml=artifacts/junit-unit.xml
       - name: Migrations
         run: alembic -c app/persistence/alembic.ini upgrade head
       - name: Integration tests (real PostgreSQL)
-        run: pytest tests/integration -q
+        run: pytest tests/integration -q --junitxml=artifacts/junit-integration.xml
       - name: Security tests
-        run: pytest tests/security -q
+        run: pytest tests/security -q --junitxml=artifacts/junit-security.xml
       - name: End-to-end tests
-        run: pytest tests/e2e -q
+        run: pytest tests/e2e -q --junitxml=artifacts/junit-e2e.xml
       - name: Coverage floor
         run: |
           pytest tests/unit tests/integration -q --cov=app --cov-report=term-missing \
-            --cov-report=xml --cov-fail-under=75
+            --cov-report=xml --cov-fail-under=75 --junitxml=artifacts/junit-coverage.xml
+      - name: Annotate test failures on the check run
+        # The first release-candidate pipeline failed with a step name and an exit code: which
+        # test broke, and why, was only in the log. The reports are collected here and re-emitted
+        # as annotations, so a red run explains itself on the pull request.
+        if: always()
+        run: python scripts/report_test_failures.py "artifacts/junit-*.xml" --label ci
       - uses: actions/upload-artifact@v4
         if: always()
         with:
-          name: coverage
-          path: coverage.xml
+          name: test-reports
+          path: |
+            artifacts/junit-*.xml
+            coverage.xml
 
   build:
     name: container build
@@ -117,16 +127,39 @@ jobs:
           docker build -f infra/docker/Dockerfile \
             -t aiops-agent:${{ github.sha }} \
             -t aiops-agent:ci .
-      - name: Smoke-test the image (boots, serves /health)
+      - name: Smoke-test the image against a real database (boots, migrates, serves)
+        # `scripts/entrypoint.sh` refuses to start without AIOPS_DATABASE_URL, and it migrates
+        # before it execs uvicorn — so a smoke test without a database asserts nothing about the
+        # release candidate and fails anyway. This brings up a throwaway PostgreSQL, lets the
+        # image apply the real schema, then checks liveness, readiness (which reports the database
+        # connection) and that the migration actually landed.
         run: |
-          docker run -d --name aiops-smoke -p 18000:8000 \
-            -e AIOPS_ENV=test -e AIOPS_AUTH_ENABLED=false aiops-agent:ci
+          set -eu
+          network=aiops-smoke
+          docker network create "$network"
+          cleanup() {
+            docker rm -f aiops-smoke aiops-smoke-db >/dev/null 2>&1 || true
+            docker network rm "$network" >/dev/null 2>&1 || true
+          }
+          trap cleanup EXIT
+          docker run -d --name aiops-smoke-db --network "$network" \
+            -e POSTGRES_USER=aiops -e POSTGRES_PASSWORD=aiops -e POSTGRES_DB=aiops postgres:16
           for _ in $(seq 1 30); do
+            if docker exec aiops-smoke-db pg_isready -U aiops >/dev/null 2>&1; then break; fi
+            sleep 2
+          done
+          docker run -d --name aiops-smoke --network "$network" -p 18000:8000 \
+            -e AIOPS_ENV=test \
+            -e AIOPS_DATABASE_URL="postgresql+psycopg://aiops:aiops@aiops-smoke-db:5432/aiops" \
+            aiops-agent:ci
+          for _ in $(seq 1 45); do
             if curl -fsS http://localhost:18000/health >/dev/null; then break; fi
             sleep 2
           done
           curl -fsS http://localhost:18000/health | tee /dev/stderr | grep -q '"status"'
-          docker rm -f aiops-smoke
+          curl -fsS http://localhost:18000/ready | tee /dev/stderr | grep -q '"status"'
+          docker exec aiops-smoke-db psql -U aiops -d aiops -tAc \
+            "select version_num from alembic_version" | grep -q .
       - name: Save image for the CD workflow
         run: docker save aiops-agent:${{ github.sha }} -o /tmp/aiops-image.tar
       - uses: actions/upload-artifact@v4
