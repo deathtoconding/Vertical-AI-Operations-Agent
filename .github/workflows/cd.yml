@@ -69,7 +69,7 @@ jobs:
         run: |
           echo "deploying ${IMAGE} to staging"
           bash scripts/deploy.sh staging "${IMAGE}"
-      - uses: actions/setup-python@v6
+      - uses: actions/setup-python@v7
         with:
           python-version: "3.11"
           cache: pip
@@ -99,7 +99,7 @@ jobs:
       IMAGE: ${{ needs.build.outputs.image }}
     steps:
       - uses: actions/checkout@v5
-      - uses: actions/setup-python@v6
+      - uses: actions/setup-python@v7
         with:
           python-version: "3.11"
           cache: pip
