@@ -61,9 +61,7 @@ HTTP_IN_FLIGHT = Gauge(
 # Database
 # --------------------------------------------------------------------------- #
 
-DB_POOL_IN_USE = Gauge(
-    "aiops_db_pool_in_use", "Checked-out connections.", registry=REGISTRY
-)
+DB_POOL_IN_USE = Gauge("aiops_db_pool_in_use", "Checked-out connections.", registry=REGISTRY)
 DB_POOL_SIZE = Gauge("aiops_db_pool_size", "Configured pool size.", registry=REGISTRY)
 DB_QUERY_FAILURES = Counter(
     "aiops_db_query_failures_total", "Failed database operations.", registry=REGISTRY
@@ -479,10 +477,32 @@ def observe(histogram: Histogram, **labels: str) -> Iterator[None]:
         labelled.observe(perf_counter() - start)
 
 
+#: Gauges whose value is set by application code rather than by an event. Clearing them would
+#: make a gauge-based assertion depend on which test ran last, so they are left alone.
+_PRESERVED_FOR_TESTS: Final[frozenset[str]] = frozenset(
+    {
+        "aiops_db_pool_size",
+        "aiops_audit_chain_broken",
+        "aiops_action_success_rate",
+        "aiops_incidents_open",
+        "aiops_http_requests_in_flight",
+        "aiops_db_pool_in_use",
+        "aiops_github_rate_limit_remaining",
+    }
+)
+
+
 def reset_for_tests() -> None:
-    """Clear all metric state. Used by fixtures so assertions are order-independent."""
+    """Clear all metric state, so every metric assertion is order-independent.
+
+    ``clear()`` is the mechanism; unregistering is **not**, because a collector removed from
+    the registry stops appearing in ``/metrics`` and in :func:`assert_metric_contract`, which
+    turns later tests into false failures. Gauges driven by application code are preserved.
+    """
     for collector in list(REGISTRY._collector_to_names):
-        if collector not in (DB_POOL_SIZE, AUDIT_CHAIN_BROKEN, ACTION_SUCCESS_RATE,
-                             INCIDENTS_OPEN, HTTP_IN_FLIGHT, DB_POOL_IN_USE,
-                             GITHUB_RATE_LIMIT_REMAINING):
-            REGISTRY.unregister(collector)
+        name = _normalise(getattr(collector, "_name", ""))
+        if name in _PRESERVED_FOR_TESTS:
+            continue
+        clear = getattr(collector, "clear", None)
+        if callable(clear):
+            clear()

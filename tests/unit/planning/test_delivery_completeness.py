@@ -50,7 +50,8 @@ def test_every_story_is_marked_by_at_least_one_test(backlog) -> None:
     """Traceability: each story id must appear as a @pytest.mark.story marker."""
     corpus = "\n".join(
         path.read_text(encoding="utf-8")
-        for path in list((REPO_ROOT / "tests").rglob("*.py")) + list((REPO_ROOT / "evals").rglob("*.py"))
+        for path in list((REPO_ROOT / "tests").rglob("*.py"))
+        + list((REPO_ROOT / "evals").rglob("*.py"))
     )
     unmarked = [story.id for story in backlog.stories if f'"{story.id}"' not in corpus]
     assert not unmarked, f"stories with no test marker: {', '.join(unmarked)}"

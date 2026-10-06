@@ -12,14 +12,14 @@ bounded.
 
 from __future__ import annotations
 
-from enum import Enum
+from enum import StrEnum
 
 # --------------------------------------------------------------------------- #
 # Incidents
 # --------------------------------------------------------------------------- #
 
 
-class Severity(str, Enum):
+class Severity(StrEnum):
     """Customer-impact classification (docs/planning/domain.md §4)."""
 
     SEV1 = "SEV1"
@@ -43,7 +43,7 @@ class Severity(str, Enum):
         return self in (Severity.SEV1, Severity.SEV2)
 
 
-class IncidentType(str, Enum):
+class IncidentType(StrEnum):
     """Closed incident taxonomy (docs/planning/domain.md §3)."""
 
     API_ERROR_SPIKE = "API_ERROR_SPIKE"
@@ -54,7 +54,7 @@ class IncidentType(str, Enum):
     TOOL_FAILURE = "TOOL_FAILURE"
 
 
-class IncidentStatus(str, Enum):
+class IncidentStatus(StrEnum):
     """Lifecycle of an incident record (distinct from an agent run's state).
 
     An incident is created ``OPEN``, may be ``ACKNOWLEDGED`` by a human, and must end in
@@ -72,7 +72,7 @@ class IncidentStatus(str, Enum):
         return self in (IncidentStatus.RESOLVED, IncidentStatus.ESCALATED)
 
 
-class MetricFamily(str, Enum):
+class MetricFamily(StrEnum):
     """Metric families the detector understands (OPS-030)."""
 
     ERROR_RATE = "error_rate"
@@ -88,7 +88,7 @@ class MetricFamily(str, Enum):
 # --------------------------------------------------------------------------- #
 
 
-class EvidenceSource(str, Enum):
+class EvidenceSource(StrEnum):
     """Where an evidence item came from. Every item is source-labelled (OPS-040)."""
 
     METRICS = "metrics"
@@ -103,7 +103,7 @@ class EvidenceSource(str, Enum):
     VERIFICATION = "verification"
 
 
-class EvidenceKind(str, Enum):
+class EvidenceKind(StrEnum):
     """Normalised evidence shapes — the reasoner sees these, not raw payloads."""
 
     METRIC_SERIES = "metric_series"
@@ -119,7 +119,7 @@ class EvidenceKind(str, Enum):
     DEGRADATION = "degradation"
 
 
-class Confidence(str, Enum):
+class Confidence(StrEnum):
     """Reliability of an evidence item, used for ranking and grounding checks."""
 
     HIGH = "high"
@@ -137,7 +137,7 @@ def confidence_score(level: Confidence) -> float:
 # --------------------------------------------------------------------------- #
 
 
-class AgentState(str, Enum):
+class AgentState(StrEnum):
     """Agent run lifecycle (OPS-002 / docs/architecture/agent-runtime.md §2)."""
 
     NEW = "NEW"
@@ -166,7 +166,7 @@ class AgentState(str, Enum):
 # --------------------------------------------------------------------------- #
 
 
-class RiskLevel(str, Enum):
+class RiskLevel(StrEnum):
     """Risk classification drives autonomy and approval (ADR-0003)."""
 
     LOW = "low"
@@ -182,15 +182,15 @@ class RiskLevel(str, Enum):
         return self.rank >= other.rank
 
 
-class AutonomyLevel(str, Enum):
+class AutonomyLevel(StrEnum):
     """How much the system is allowed to do without a human (V6 roadmap gate)."""
 
-    OBSERVE_ONLY = "observe_only"          # detect + investigate + propose, never execute
+    OBSERVE_ONLY = "observe_only"  # detect + investigate + propose, never execute
     APPROVAL_REQUIRED = "approval_required"  # default: medium risk and above need approval
     SELECTIVE_AUTONOMY = "selective_autonomy"  # low risk auto-executes; high risk still gated
 
 
-class PolicyDecisionType(str, Enum):
+class PolicyDecisionType(StrEnum):
     """Terminal outcomes of a policy evaluation (app/policy/engine.py)."""
 
     ALLOW = "ALLOW"
@@ -198,7 +198,7 @@ class PolicyDecisionType(str, Enum):
     REQUIRE_APPROVAL = "REQUIRE_APPROVAL"
 
 
-class ApprovalDecision(str, Enum):
+class ApprovalDecision(StrEnum):
     PENDING = "PENDING"
     APPROVED = "APPROVED"
     REJECTED = "REJECTED"
@@ -209,7 +209,7 @@ class ApprovalDecision(str, Enum):
         return self is not ApprovalDecision.PENDING
 
 
-class Role(str, Enum):
+class Role(StrEnum):
     """RBAC roles (SEC-002). Least privilege: viewer cannot change anything."""
 
     VIEWER = "viewer"
@@ -227,7 +227,7 @@ class Role(str, Enum):
 # --------------------------------------------------------------------------- #
 
 
-class ActionStatus(str, Enum):
+class ActionStatus(StrEnum):
     """Action execution lifecycle. ``SUCCEEDED`` means "executed", NOT "verified effective"."""
 
     PROPOSED = "PROPOSED"
@@ -248,7 +248,7 @@ class ActionStatus(str, Enum):
         )
 
 
-class VerificationOutcome(str, Enum):
+class VerificationOutcome(StrEnum):
     """The three honest answers (ADR-0004). Never inferred from an HTTP status."""
 
     SUCCESS = "SUCCESS"
@@ -260,7 +260,7 @@ class VerificationOutcome(str, Enum):
         return self is VerificationOutcome.SUCCESS
 
 
-class EscalationReason(str, Enum):
+class EscalationReason(StrEnum):
     """Why the agent handed the incident to a human."""
 
     POLICY_DENIED = "policy_denied"
@@ -276,7 +276,7 @@ class EscalationReason(str, Enum):
     ROLLBACK_LIMIT_REACHED = "rollback_limit_reached"
 
 
-class ToolOutcome(str, Enum):
+class ToolOutcome(StrEnum):
     """Outcome recorded for every tool invocation (and every rejected attempt)."""
 
     SUCCESS = "success"
@@ -293,7 +293,7 @@ class ToolOutcome(str, Enum):
 # --------------------------------------------------------------------------- #
 
 
-class AuditEventType(str, Enum):
+class AuditEventType(StrEnum):
     """Auditable event types (SEC-004). Every consequential step uses one of these."""
 
     INCIDENT_CREATED = "incident_created"
@@ -349,6 +349,8 @@ INCIDENT_TYPE_TO_SCENARIO: dict[IncidentType, str] = {
 }
 
 __all__ = [
+    "INCIDENT_TYPE_TO_SCENARIO",
+    "SEVERITY_RESPONSE_TARGETS",
     "ActionStatus",
     "AgentState",
     "ApprovalDecision",
@@ -358,14 +360,12 @@ __all__ = [
     "EscalationReason",
     "EvidenceKind",
     "EvidenceSource",
-    "INCIDENT_TYPE_TO_SCENARIO",
     "IncidentStatus",
     "IncidentType",
     "MetricFamily",
     "PolicyDecisionType",
     "RiskLevel",
     "Role",
-    "SEVERITY_RESPONSE_TARGETS",
     "Severity",
     "ToolOutcome",
     "VerificationOutcome",

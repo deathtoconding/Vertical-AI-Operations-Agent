@@ -7,8 +7,8 @@ Usage::
     python scripts/export_backlog.py --markdown docs/backlog/SPRINT_BOARD.md
     python scripts/export_backlog.py --check        # validate only (used by CI)
 
-The script imports the same validated loader the tests use, so an invalid plan
-cannot be exported — planning and code share one contract.
+The script imports the same validated loader the tests use, so an invalid plan cannot be
+exported — planning and code share one contract.
 """
 
 from __future__ import annotations
@@ -22,7 +22,7 @@ REPO_ROOT = Path(__file__).resolve().parents[1]
 if str(REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(REPO_ROOT))
 
-from app.planning.backlog import (  # noqa: E402
+from app.planning.backlog import (  # noqa: E402 - repo root is added to sys.path above
     BacklogError,
     jira_rows,
     load_backlog,
@@ -37,7 +37,10 @@ def render_markdown(backlog_path: str | None = None) -> str:
     totals = sprint_points(backlog)
     lines: list[str] = [
         "<!-- GENERATED FILE — do not edit by hand. -->",
-        "<!-- Regenerate with: python scripts/export_backlog.py --markdown docs/backlog/SPRINT_BOARD.md -->",
+        (
+            "<!-- Regenerate with: python scripts/export_backlog.py "
+            "--markdown docs/backlog/SPRINT_BOARD.md -->"
+        ),
         "",
         "# Sprint Board — Vertical AI Operations Agent",
         "",
@@ -117,7 +120,9 @@ def export_csv(target: Path, backlog_path: str | None = None) -> int:
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--csv", type=Path, default=None, help="write Jira-import CSV here")
-    parser.add_argument("--markdown", type=Path, default=None, help="write sprint board Markdown here")
+    parser.add_argument(
+        "--markdown", type=Path, default=None, help="write sprint board Markdown here"
+    )
     parser.add_argument("--check", action="store_true", help="validate the backlog and exit")
     parser.add_argument("--backlog", type=str, default=None, help="path to backlog.yaml")
     args = parser.parse_args(argv)

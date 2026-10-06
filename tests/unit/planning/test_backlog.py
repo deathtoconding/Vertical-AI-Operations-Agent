@@ -7,6 +7,7 @@ from __future__ import annotations
 
 import csv
 import io
+from itertools import pairwise
 from pathlib import Path
 
 import pytest
@@ -100,7 +101,7 @@ def test_dependencies_are_never_scheduled_later(backlog) -> None:
 def test_critical_path_is_preserved(backlog) -> None:
     """Section 18 — the documented spine must still be a connected dependency chain."""
     assert backlog.spine_is_intact(), "the critical-path spine is broken"
-    for earlier, later in zip(CRITICAL_PATH, CRITICAL_PATH[1:], strict=False):
+    for earlier, later in pairwise(CRITICAL_PATH):
         assert backlog.reaches(later, earlier), f"{later} no longer depends on {earlier}"
     realised = backlog.critical_path()
     assert len(realised) >= len(CRITICAL_PATH)
@@ -238,7 +239,10 @@ def _write(tmp_path: Path, document: dict) -> Path:
         (lambda d: d["stories"][0].update(priority="P9"), "invalid priority"),
         (lambda d: d["stories"][0].update(epic="EPIC-99"), "unknown epic"),
         (lambda d: d["sprints"][0].update(stories=[]), "no stories assigned"),
-        (lambda d: d["sprints"].append({"number": 2, "stories": ["OPS-001"]}), "scheduled in two sprints"),
+        (
+            lambda d: d["sprints"].append({"number": 2, "stories": ["OPS-001"]}),
+            "scheduled in two sprints",
+        ),
     ],
 )
 def test_invalid_backlogs_are_rejected(tmp_path: Path, mutate, message: str) -> None:

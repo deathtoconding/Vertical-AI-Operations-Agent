@@ -1,12 +1,12 @@
 """Planning-surface: the backlog is validated like code, not like prose.
 
-This module turns ``docs/backlog/backlog.yaml`` into typed objects and provides the
-checks that keep the plan honest:
+This module turns ``docs/backlog/backlog.yaml`` into typed objects and provides the checks that keep
+the plan honest:
 
 * structural validation (epics, stories, sprints, references)
 * the Fibonacci point model with the "split any 13" rule (section 19)
-* Definition of Ready enforcement (section 23) per story
-* dependency-graph validation (existence, acyclicity, sprint ordering)
+* Definition of Ready enforcement (section 23) per story * dependency-graph validation (existence,
+acyclicity, sprint ordering)
 * realised sprint loads, so a sprint cannot silently grow past its capacity
 * the traceability map used by ``@pytest.mark.story`` markers
 
@@ -19,6 +19,7 @@ from __future__ import annotations
 from collections import defaultdict, deque
 from dataclasses import dataclass, field
 from functools import lru_cache
+from itertools import pairwise
 from pathlib import Path
 from typing import Any, Final
 
@@ -65,7 +66,10 @@ CRITICAL_PATH: Final[tuple[str, ...]] = (
 MVP_SCENARIOS: Final[dict[str, str]] = {
     "A": "API error spike -> deployment-correlated rollback -> verified recovery",
     "B": "API latency spike -> endpoint/infra bottleneck -> remediation -> verified recovery",
-    "C": "Subscription/payment anomaly -> affected customers -> incident + notification + recovery tracking",
+    "C": (
+        "Subscription/payment anomaly -> affected customers -> incident + notification "
+        "+ recovery tracking"
+    ),
 }
 
 
@@ -131,6 +135,7 @@ class Backlog:
     version: int
 
     # -- lookups ----------------------------------------------------------- #
+
     def story(self, story_id: str) -> Story:
         for item in self.stories:
             if item.id == story_id:
@@ -151,6 +156,7 @@ class Backlog:
         return dict(grouped)
 
     # -- graph ------------------------------------------------------------- #
+
     def dependencies(self, story_id: str) -> tuple[str, ...]:
         return self.story(story_id).dependencies
 
@@ -188,10 +194,7 @@ class Backlog:
 
     def spine_is_intact(self) -> bool:
         """Section 18: every consecutive pair of the documented spine must be connected."""
-        return all(
-            self.reaches(later, earlier)
-            for earlier, later in zip(CRITICAL_PATH, CRITICAL_PATH[1:], strict=False)
-        )
+        return all(self.reaches(later, earlier) for earlier, later in pairwise(CRITICAL_PATH))
 
     def critical_path(self) -> tuple[str, ...]:
         """Longest dependency chain by story count — the delivery spine."""
@@ -220,8 +223,8 @@ def load_backlog(path: Path | str | None = None, *, require_spine: bool = True) 
     """Load and validate the backlog.
 
     Raises:
-        BacklogError: if the document is structurally invalid or violates the
-            planning contract (graph, points, Definition of Ready).
+        BacklogError: if the document is structurally invalid or violates the planning contract
+        (graph, points, Definition of Ready).
     """
     target = Path(path) if path is not None else default_backlog_path()
     if not target.exists():
@@ -234,9 +237,7 @@ def load_backlog(path: Path | str | None = None, *, require_spine: bool = True) 
     epics = tuple(_parse_epic(item) for item in _require_list(raw, "epics"))
     epic_summaries = {epic.id: epic.summary for epic in epics}
 
-    stories = tuple(
-        _parse_story(item, epic_summaries) for item in _require_list(raw, "stories")
-    )
+    stories = tuple(_parse_story(item, epic_summaries) for item in _require_list(raw, "stories"))
     sprints = tuple(_parse_sprint(item) for item in _require_list(raw, "sprints"))
 
     backlog = Backlog(
@@ -292,7 +293,14 @@ def _parse_story(raw: dict[str, Any], epic_summaries: dict[str, str]) -> Story:
     if epic not in epic_summaries:
         raise BacklogError(f"{story_id}: unknown epic '{epic}'")
 
-    for required in ("summary", "description", "priority", "points", "sprint", *REQUIRED_PLAN_FIELDS):
+    for required in (
+        "summary",
+        "description",
+        "priority",
+        "points",
+        "sprint",
+        *REQUIRED_PLAN_FIELDS,
+    ):
         if raw.get(required) in (None, "", [], {}):
             raise BacklogError(f"{story_id}: '{required}' is required (Definition of Ready)")
 
@@ -369,8 +377,7 @@ def validate_plan_completeness(backlog: Backlog) -> None:
     """Full-project checks that a partial document (used in negative tests) skips.
 
     The documented critical path (section 18) must be present and must remain a
-    connected dependency chain — otherwise the plan no longer describes a
-    deliverable order.
+    connected dependency chain — otherwise the plan no longer describes a deliverable order.
     """
     missing = [story_id for story_id in CRITICAL_PATH if not backlog.has_story(story_id)]
     if missing:
@@ -378,7 +385,7 @@ def validate_plan_completeness(backlog: Backlog) -> None:
     if not backlog.spine_is_intact():
         broken = [
             f"{earlier}->{later}"
-            for earlier, later in zip(CRITICAL_PATH, CRITICAL_PATH[1:], strict=False)
+            for earlier, later in pairwise(CRITICAL_PATH)
             if not backlog.reaches(later, earlier)
         ]
         raise BacklogError(f"critical-path spine incomplete: broken edges {', '.join(broken)}")
@@ -438,12 +445,14 @@ def _validate_sprints(backlog: Backlog) -> None:
             story = backlog.story(story_id)
             if story.sprint != sprint.number:  # pragma: no cover - guarded above
                 raise BacklogError(
-                    f"{story_id}: sprint {story.sprint} disagrees with sprint {sprint.number} board entry"
+                    f"{story_id}: sprint {story.sprint} disagrees with "
+                    f"sprint {sprint.number} board entry"
                 )
             points += story.points
         if points > SPRINT_CAPACITY:
             raise BacklogError(
-                f"sprint {sprint.number} ({sprint.name}) is over capacity: {points} > {SPRINT_CAPACITY}"
+                f"sprint {sprint.number} ({sprint.name}) is over capacity: "
+                f"{points} > {SPRINT_CAPACITY}"
             )
 
     unassigned = sorted(assignable - seen)
