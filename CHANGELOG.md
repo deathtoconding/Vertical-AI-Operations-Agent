@@ -22,10 +22,18 @@ are recorded because each one made a control either fail for the wrong reason or
   allowlists references and placeholders per rule. `tests/unit/planning/test_secret_rules.py`
   re-implements the subset of gitleaks' semantics these rules rely on and fails if a custom rule
   reports a non-secret; it fails against the previous ruleset.
-- **The container scan never ran.** `aquasecurity/trivy-action@0.29.0` does not exist — the action
-  publishes `vX.Y.Z` tags — so the job died at *Set up job* before a single step executed, taking
-  the SBOM step with it. Pinned to the verified `v0.29.0`, and the pinning test now rejects a ref
-  that is not a release tag or a commit SHA.
+- **The container scan never ran.** `aquasecurity/trivy-action@0.29.0` is not a tag (the action
+  publishes `vX.Y.Z`), so the job died at *Set up job* before a single step executed, taking the
+  SBOM step with it. Pinning to `v0.29.0` was not enough — that release references
+  `aquasecurity/setup-trivy@v0.2.2`, which does not exist either. The job is pinned to `v0.36.0`,
+  whose `setup-trivy` and `actions/cache` references resolve by SHA and whose inputs were checked
+  against its `action.yaml`; the pinning test now rejects a ref that is not a release tag or a SHA.
+- **Findings were only visible in a log file.** The secret-scanning job failed with "see job
+  summary for details", leaving the findings in a summary and a log.
+  `scripts/report_gitleaks_findings.py` reads the SARIF report the action already writes and
+  re-emits every result as a check annotation (rule, file, line, commit, `.gitleaksignore`
+  fingerprint — never the secret), so a finding is visible on the check run and readable through
+  the API.
 - **Strict type checking failed on the CI install profile.** `scripts/pg_server.py` used a static
   `from pgserver import get_server  # type: ignore[attr-defined]`. `pgserver` is the optional
   `localdb` extra and its stubs do not re-export the function, so on the `.[dev]` profile CI

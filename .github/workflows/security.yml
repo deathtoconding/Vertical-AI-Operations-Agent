@@ -30,6 +30,14 @@ jobs:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           GITLEAKS_CONFIG: configs/gitleaks.toml
           GITLEAKS_ENABLE_COMMENTS: "false"
+      - name: Annotate the findings on the check run
+        # The action writes results.sarif and fails with "see job summary for details". A finding
+        # that only exists in a log file is a finding most reviewers never see, so it is re-emitted
+        # as a check annotation attached to the file and line — readable in the diff, and through
+        # the API for anyone triaging. The step runs even when the scan failed, and exits 1 on
+        # findings so the gate stays blocking on its own.
+        if: always()
+        run: python scripts/report_gitleaks_findings.py results.sarif
       - name: Local hygiene check (duplicate guard, runs without network)
         run: bash scripts/check_repo_hygiene.sh
 
@@ -88,10 +96,12 @@ jobs:
       - name: Build image
         run: docker build -f infra/docker/Dockerfile -t aiops-agent:scan .
       - name: Trivy image scan (fails on HIGH/CRITICAL with a fix available)
-        # The ref must be a tag that exists: `@0.29.0` does not (trivy-action publishes
-        # `vX.Y.Z`), and an unresolvable action fails the job at "Set up job" before any step
-        # runs. Verified with `gh api repos/aquasecurity/trivy-action/git/ref/tags/v0.29.0`.
-        uses: aquasecurity/trivy-action@v0.29.0
+        # Every ref here must resolve, including the ones an action pulls in: `@0.29.0` is not a
+        # tag (trivy-action publishes `vX.Y.Z`), and `v0.29.0`/`v0.30.0` still fail at "Set up job"
+        # because they reference `aquasecurity/setup-trivy@v0.2.2`, which does not exist. v0.36.0
+        # pins setup-trivy and actions/cache by SHA, both of which resolve; the inputs below were
+        # checked against its action.yaml.
+        uses: aquasecurity/trivy-action@v0.36.0
         with:
           image-ref: aiops-agent:scan
           format: sarif

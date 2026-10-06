@@ -23,6 +23,7 @@ ruleset it is validating.
 
 from __future__ import annotations
 
+import json
 import math
 import pathlib
 import re
@@ -257,3 +258,87 @@ def test_the_evaluator_covers_every_feature_the_ruleset_uses() -> None:
             assert allow.get("regexes") or allow.get("stopwords") or allow.get("paths"), (
                 f"{rule['id']}'s allowlist matches nothing"
             )
+
+
+# --------------------------------------------------------------------------- #
+# How a finding is reported
+# --------------------------------------------------------------------------- #
+
+SCRIPT = "report_gitleaks_findings"
+
+
+def load_script(name: str) -> Any:
+    """Import ``scripts/<name>.py`` by path, the way the other planning tests do."""
+    import importlib.util
+    import sys
+
+    spec = importlib.util.spec_from_file_location(name, REPO_ROOT / "scripts" / f"{name}.py")
+    assert spec and spec.loader
+    module = importlib.util.module_from_spec(spec)
+    sys.modules[spec.name] = module
+    spec.loader.exec_module(module)
+    return module
+
+
+def sarif(rule_id: str, path: str, line: int, commit: str, snippet: str) -> pathlib.Path:
+    document = {
+        "version": "2.1.0",
+        "runs": [
+            {
+                "tool": {"driver": {"name": "gitleaks"}},
+                "results": [
+                    {
+                        "ruleId": rule_id,
+                        "message": {"text": "redacted description"},
+                        "partialFingerprints": {"commitSha": commit},
+                        "locations": [
+                            {
+                                "physicalLocation": {
+                                    "artifactLocation": {"uri": path},
+                                    "region": {"startLine": line, "snippet": {"text": snippet}},
+                                }
+                            }
+                        ],
+                    }
+                ],
+            }
+        ],
+    }
+    report = pathlib.Path("/tmp/aiops-test-results.sarif")
+    report.write_text(json.dumps(document), encoding="utf-8")
+    return report
+
+
+def test_a_finding_is_annotated_with_its_location_and_fingerprint(tmp_path: pathlib.Path) -> None:
+    """The annotation must be actionable (file, line, fingerprint) and must not leak the secret."""
+    module = load_script(SCRIPT)
+    report = sarif(
+        "aiops-deploy-credential",
+        "scripts/deploy,prod.sh",
+        36,
+        "abcdef1234567890fedcba",
+        "DEPLOY_TOKEN=do-not-repeat-this-value",
+    )
+    result = module.results_of(json.loads(report.read_text(encoding="utf-8")))[0]
+    annotation = module.annotate(result)
+
+    assert annotation.startswith("::error file=scripts/deploy%2Cprod.sh,line=36::")
+    assert "aiops-deploy-credential" in annotation
+    assert "abcdef1234567890fedcba:scripts/deploy,prod.sh:aiops-deploy-credential:36" in annotation
+    assert "do-not-repeat-this-value" not in annotation, (
+        "the annotation must never echo a value the report only redacted"
+    )
+
+
+def test_the_reporter_only_fails_when_there_is_something_to_report() -> None:
+    module = load_script(SCRIPT)
+    with_findings = sarif("aiops-llm-api-key", "scripts/x.sh", 3, "0" * 40, "redacted")
+    assert module.main([str(with_findings)]) == 1
+
+    empty = pathlib.Path("/tmp/aiops-test-empty.sarif")
+    empty.write_text(json.dumps({"version": "2.1.0", "runs": [{"results": []}]}), encoding="utf-8")
+    assert module.main([str(empty)]) == 0
+
+    # A run whose scan never produced a report must not turn a scanner failure into a *reporting*
+    # failure: the scanner step owns that verdict.
+    assert module.main(["/tmp/aiops-test-missing.sarif"]) == 0
