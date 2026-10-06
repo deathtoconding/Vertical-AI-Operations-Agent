@@ -300,6 +300,30 @@ def test_prometheus_scrapes_the_application_metrics_endpoint() -> None:
     assert "aiops_" in rules, "alert rules must reference real metric families"
 
 
+def test_no_workflow_takes_an_image_path_from_the_repository_name() -> None:
+    """`github.repository` is `deathtoconding/Vertical-AI-Operations-Agent`: mixed case.
+
+    A Docker image reference must be lowercase, so `ghcr.io/${{ github.repository }}/aiops-agent`
+    is invalid and `docker build -t` fails with "invalid reference format" before any image exists.
+    The CD pipeline could therefore never publish the artifact its own release process describes —
+    and it had never run, because the sandbox has no Docker. The image path is derived from the
+    repository name lowercased, in one place, and the deploy jobs consume that output.
+    """
+    for path in sorted((REPO_ROOT / ".github" / "workflows").glob("*.yml")):
+        for number, line in enumerate(path.read_text(encoding="utf-8").splitlines(), 1):
+            instruction = line.strip()
+            if instruction.startswith("#") or not (
+                "ghcr.io" in instruction or "docker build" in instruction
+            ):
+                continue  # comments explain the rule; they are not the rule
+            assert (
+                "github.repository" not in instruction and "GITHUB_REPOSITORY}" not in instruction
+            ), (
+                f"{path.name}:{number} takes an image path straight from the repository name, "
+                "which is not a valid Docker reference here (mixed case)"
+            )
+
+
 def test_the_ci_test_job_exercises_the_database() -> None:
     """A skipped integration test looks exactly like a passing one.
 

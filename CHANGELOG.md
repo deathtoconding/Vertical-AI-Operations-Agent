@@ -68,6 +68,13 @@ are recorded because each one made a control either fail for the wrong reason or
   dependency set, and cannot be upgraded by editing `pyproject.toml`. The runtime stage now removes
   them from both the base interpreter and the application environment: production needs no package
   manager, and the image carries neither the advisories nor the ability to install anything.
+- **The CD pipeline could never publish the artifact it promises.** `cd.yml` built
+  `ghcr.io/${{ github.repository }}/aiops-agent:${{ github.sha }}`, and `github.repository` is
+  `deathtoconding/Vertical-AI-Operations-Agent` — mixed case, which is not a valid Docker image
+  reference, so `docker build -t` failed with "invalid reference format" before an image existed
+  (the local sandbox has no Docker, which is why the step had never run). The image path is
+  lowercased once in the `meta` step the deploy jobs already consume, and build and push are now
+  separate steps so "the image does not build" and "the registry refused the push" are told apart.
 - **A contract test that passed locally and failed on the runner.** `test_documentation.py`
   asserted that ADR numbers are ordered by reading `Path.glob("*.md")`, which yields directory
   order — a filesystem accident, not a property of the repository. The paths are sorted now and the

@@ -40,16 +40,25 @@ jobs:
     steps:
       - uses: actions/checkout@v5
       - id: meta
-        run: echo "image=ghcr.io/${{ github.repository }}/aiops-agent:${{ github.sha }}" >> "$GITHUB_OUTPUT"
+        # A Docker image reference must be lowercase and `github.repository` is not: this repository
+        # is `deathtoconding/Vertical-AI-Operations-Agent`, so `ghcr.io/${{ github.repository }}/…`
+        # is an invalid reference and `docker build` fails with "invalid reference format" before an
+        # image exists — the pipeline could never publish the immutable artifact it promises. The
+        # deploy jobs consume this single output, so the case is fixed in one place.
+        run: |
+          repository="$(printf '%s' "$GITHUB_REPOSITORY" | tr '[:upper:]' '[:lower:]')"
+          echo "image=ghcr.io/${repository}/aiops-agent:${{ github.sha }}" >> "$GITHUB_OUTPUT"
       - uses: docker/login-action@v3
         with:
           registry: ghcr.io
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
-      - name: Build and push (tagged with the commit SHA — never `latest` in an environment)
-        run: |
-          docker build -f infra/docker/Dockerfile -t "${{ steps.meta.outputs.image }}" .
-          docker push "${{ steps.meta.outputs.image }}"
+      - name: Build (tagged with the commit SHA — never `latest` in an environment)
+        run: docker build -f infra/docker/Dockerfile -t "${{ steps.meta.outputs.image }}" .
+      - name: Push the immutable artifact
+        # Separate from the build: "the image does not build" and "the registry refused the push"
+        # are different problems, and one step would report both as `exit code 1`.
+        run: docker push "${{ steps.meta.outputs.image }}"
 
   staging:
     name: deploy staging + smoke + evaluation
