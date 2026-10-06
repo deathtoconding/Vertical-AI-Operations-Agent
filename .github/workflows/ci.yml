@@ -113,7 +113,7 @@ jobs:
         # as annotations, so a red run explains itself on the pull request.
         if: always()
         run: python scripts/report_test_failures.py "artifacts/junit-*.xml" --label ci
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         if: always()
         with:
           name: test-reports
@@ -187,7 +187,7 @@ jobs:
             "select version_num from alembic_version" | grep -q .
       - name: Save image for the CD workflow
         run: docker save aiops-agent:${{ github.sha }} -o /tmp/aiops-image.tar
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         with:
           name: image
           path: /tmp/aiops-image.tar
