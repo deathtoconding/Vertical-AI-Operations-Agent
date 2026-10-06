@@ -28,7 +28,7 @@ dependencies = [
   "psycopg[binary]==3.3.6",
   "httpx==0.28.1",
   "structlog==26.1.0",
-  "prometheus-client==0.25.0",
+  "prometheus-client==0.26.0",
   "opentelemetry-api==1.45.0",
   "opentelemetry-sdk==1.45.0",
   "PyYAML==6.0.3",
@@ -44,7 +44,7 @@ dev = [
   "mypy==2.4.0",
   "types-PyYAML==6.0.12.20260906",
   "bandit==1.9.4",
-  "pip-audit==2.10.0",
+  "pip-audit==2.10.1",
 ]
 # Local, docker-free PostgreSQL used by `make pg` and the integration tests.
 localdb = ["pgserver==0.1.4"]
@@ -122,6 +122,11 @@ ignore_missing_imports = true
 
 [[tool.mypy.overrides]]
 module = ["tests.*"]
+# Test bodies are not shipped, and an annotation on every test function and fixture adds noise
+# without catching anything mypy would not already see in the code under test. Production code
+# (`app/`, `scripts/`, `evals/`) stays under the full strict settings above.
+disallow_untyped_defs = false
+disallow_incomplete_defs = false
 disallow_untyped_decorators = false
 
 # ---------------------------------------------------------------------------

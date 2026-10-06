@@ -59,7 +59,7 @@ async def warm_up_cheaply(api: Any) -> str:
         json={"scenario": "A", "orchestrate": True, "reset": True},
     )
     assert scenario.status_code == 200
-    incident_id = scenario.json()["incidents_created"][0]
+    incident_id = str(scenario.json()["incidents_created"][0])
     # The run stops at the approval gate, which is where the slow part of the lifecycle starts.
     detail = await api.client.get(f"/api/v1/incidents/{incident_id}")
     assert detail.json()["run"]["state"] == "WAITING_APPROVAL"
@@ -80,7 +80,7 @@ async def run_full_lifecycle(api: Any) -> str:
         json={"scenario": "A", "orchestrate": True, "reset": True},
     )
     assert scenario.status_code == 200
-    incident_id = scenario.json()["incidents_created"][0]
+    incident_id = str(scenario.json()["incidents_created"][0])
 
     pending = await api.client.get("/api/v1/approvals", params={"pending_only": "true"})
     for approval in pending.json()["approvals"]:

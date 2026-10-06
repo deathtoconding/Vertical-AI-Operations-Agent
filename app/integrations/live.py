@@ -20,10 +20,27 @@ from app.core.config import Settings
 from app.core.errors import IntegrationBadResponse
 from app.core.sanitization import sanitize_untrusted
 from app.integrations.http import ResilientHttpClient
+from app.integrations.notifications import build_slack_message
 
 
 def _now() -> datetime:
     return datetime.now(UTC)
+
+
+def _as_list(payload: Any, system: str) -> list[Any]:
+    """Unwrap a collection response, and refuse to invent an empty one.
+
+    ``ResilientHttpClient`` normalises a bare JSON array into ``{"data": [...]}`` so callers can
+    type it as a mapping; a collection endpoint therefore has two legitimate shapes. Anything
+    else is a bad response — returning ``[]`` here would turn "GitHub answered with an error
+    page" into "there were no commits", which is precisely the silent empty success the
+    integration contract forbids.
+    """
+    if isinstance(payload, list):
+        return list(payload)
+    if isinstance(payload, dict) and isinstance(payload.get("data"), list):
+        return list(payload["data"])
+    raise IntegrationBadResponse(system, f"{system} did not return a collection as expected")
 
 
 class HttpMetricsProvider:
@@ -82,6 +99,8 @@ class HttpMetricsProvider:
     async def list_metrics(self, service: str) -> list[str]:
         payload = await self.client.get("/api/v1/label/__name__/values")
         names = payload.get("data", [])
+        if not isinstance(names, list):
+            raise IntegrationBadResponse("metrics", "metrics label endpoint returned no list")
         return [str(name) for name in names][:500]
 
 
@@ -193,7 +212,7 @@ class HttpGitHubClient:
                 "html_url": item.get("html_url", ""),
                 "deployment": None,
             }
-            for item in (payload if isinstance(payload, list) else [])
+            for item in _as_list(payload, "github")
         ]
         return {
             "repository": repo,
@@ -215,7 +234,7 @@ class HttpGitHubClient:
                 "deployed_by": str(item.get("creator", {}).get("login", "unknown")),
                 "status": str(item.get("environment", "unknown")),
             }
-            for item in (payload if isinstance(payload, list) else [])
+            for item in _as_list(payload, "github")
         ]
         return {"repository": repo, "deployments": deployments[:limit], "simulated": False}
 
@@ -271,13 +290,8 @@ class HttpSlackClient:
         self.default_channel = default_channel
 
     async def notify(self, payload: dict[str, Any]) -> dict[str, Any]:
-        response = await self.client.post(
-            "",
-            json_body={
-                "channel": payload.get("channel") or self.default_channel,
-                "text": payload.get("text", ""),
-            },
-        )
+        body = build_slack_message(payload, default_channel=self.default_channel)
+        response = await self.client.post("", json_body=body)
         if not response.get("ok", False):
             raise IntegrationBadResponse("slack", "slack rejected the notification")
         return {
@@ -308,14 +322,16 @@ class HttpPaymentsProvider:
         self.client = client
 
     async def payment_failures(self, window_minutes: int) -> dict[str, Any]:
-        payload = await self.client.get(
+        # The client returns whatever JSON arrived; these endpoints answer with an object, and
+        # declaring the local makes that contract explicit (and checked).
+        payload: dict[str, Any] = await self.client.get(
             "/v1/payment_intents/failures", params={"window_minutes": window_minutes}
         )
         payload["simulated"] = False
         return payload
 
     async def affected_customers(self, window_minutes: int) -> dict[str, Any]:
-        payload = await self.client.get(
+        payload: dict[str, Any] = await self.client.get(
             "/v1/payment_intents/affected", params={"window_minutes": window_minutes}
         )
         payload["simulated"] = False
@@ -329,17 +345,17 @@ class HttpDeploymentProvider:
         self.client = client
 
     async def current_state(self) -> dict[str, Any]:
-        payload = await self.client.get("/api/deployments/current")
+        payload: dict[str, Any] = await self.client.get("/api/deployments/current")
         payload["simulated"] = False
         return payload
 
     async def history(self, limit: int) -> dict[str, Any]:
-        payload = await self.client.get("/api/deployments", params={"limit": limit})
+        payload: dict[str, Any] = await self.client.get("/api/deployments", params={"limit": limit})
         payload["simulated"] = False
         return payload
 
     async def rollback(self, target_release: str, reason: str) -> dict[str, Any]:
-        payload = await self.client.post(
+        payload: dict[str, Any] = await self.client.post(
             "/api/deployments/rollback",
             json_body={"target_release": target_release, "reason": reason},
         )

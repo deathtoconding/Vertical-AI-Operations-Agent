@@ -71,6 +71,9 @@ class Settings(BaseSettings):
     log_level: str = "INFO"
     log_json: bool | None = None
     api_prefix: str = "/api/v1"
+    #: Where the operator console is reachable. Used to build human-facing links (for example
+    #: the approval link in a Slack notification); never used to make a request.
+    public_base_url: str = "http://localhost:8000"
     request_timeout_seconds: float = 10.0
     service_name: str = "aiops-agent"
     version: str = "1.0.0"

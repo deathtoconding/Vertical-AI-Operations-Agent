@@ -84,9 +84,11 @@ def test_invalid_transition_is_counted() -> None:
     from app.core.telemetry import _normalise
 
     expected = _normalise(AGENT_TRANSITIONS._name)
+    families = list(AGENT_TRANSITIONS.collect())
+    samples = list(families[0].samples)
     found = [
         metric.value
-        for metric in AGENT_TRANSITIONS.collect()[0].samples
+        for metric in samples
         if metric.labels.get("result") == "invalid" and _normalise(metric.name) == expected
     ]
     assert found and found[0] == 1.0, found

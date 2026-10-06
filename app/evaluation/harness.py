@@ -21,10 +21,12 @@ from __future__ import annotations
 import asyncio
 from pathlib import Path
 from time import perf_counter
-from typing import Any
+from typing import Any, cast
+
+from pydantic import SecretStr
 
 from app.actions.planner import expected_state_for, plan_actions
-from app.core.config import Settings
+from app.core.config import Environment, IntegrationsMode, Settings
 from app.core.errors import IntegrationUnavailable
 from app.core.security import Actor
 from app.detection.detector import AnomalyDetector
@@ -47,7 +49,7 @@ from app.evaluation.schemas import (
     load_dataset,
     summarise,
 )
-from app.integrations.facade import build_integrations
+from app.integrations.facade import IntegrationFacade, build_integrations
 from app.investigation.collector import EvidenceCollector
 from app.investigation.evidence import to_domain_evidence
 from app.investigation.investigator import Investigator
@@ -282,8 +284,10 @@ class Harness:
     ) -> tuple[list[Any], list[dict[str, str]]]:
         original = self.collector.integrations
         if case.degraded_sources:
-            self.collector.integrations = _DegradedIntegrations(
-                original, set(case.degraded_sources)
+            # The wrapper exposes the same provider surface as the facade (that is what makes
+            # the degradation real), but it is not the facade's concrete class.
+            self.collector.integrations = cast(
+                IntegrationFacade, _DegradedIntegrations(original, set(case.degraded_sources))
             )
         try:
             report = await self.collector.collect(incident)
@@ -511,10 +515,10 @@ async def run_dataset(dataset_path: str | Path, settings: Settings | None = None
 def _default_settings() -> Settings:
     """Sandbox settings for an evaluation run: no credentials, no live systems, no auth."""
     return Settings(
-        env="test",
+        env=Environment.TEST,
         log_level="WARNING",
-        integrations_mode="sandbox",
-        llm_api_key="",
+        integrations_mode=IntegrationsMode.SANDBOX,
+        llm_api_key=SecretStr(""),
         tracing_enabled=False,
         rate_limit_requests_per_minute=100_000,
         detection_min_samples=6,

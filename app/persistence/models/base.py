@@ -10,18 +10,20 @@ from __future__ import annotations
 
 import uuid
 from datetime import UTC, datetime
-from typing import Any, ClassVar
+from typing import Any
 
 from sqlalchemy import DateTime, String, func
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column
 
 
 class Base(DeclarativeBase):
-    """Declarative base for every ORM model."""
+    """Declarative base for every ORM model.
 
-    #: Metadata naming convention so Alembic autogenerate produces stable constraint names.
-    #: Declared as a ClassVar because SQLAlchemy reads it as configuration, not instance state.
-    __table_args__: ClassVar[dict[str, bool]] = {"sqlite_autoincrement": False}
+    ``__table_args__`` is deliberately *not* set here: a base-level dict would apply to every
+    table and conflicts with models that declare a tuple of ``Index`` objects. The one entry it
+    used to carry (``sqlite_autoincrement``) was a SQLite-only knob, and PostgreSQL is the only
+    supported backend (ADR-0005).
+    """
 
 
 def utcnow() -> datetime:

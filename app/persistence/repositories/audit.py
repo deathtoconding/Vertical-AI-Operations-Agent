@@ -13,7 +13,7 @@ from __future__ import annotations
 import hashlib
 import json
 from datetime import datetime
-from typing import Any
+from typing import Any, cast
 
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -38,7 +38,7 @@ def json_safe(payload: dict[str, Any]) -> dict[str, Any]:
     round-trip normalises exactly what will be stored, so the hash is computed over the bytes a
     verifier will later read back.
     """
-    return json.loads(json.dumps(payload, sort_keys=True, default=str))
+    return cast(dict[str, Any], json.loads(json.dumps(payload, sort_keys=True, default=str)))
 
 
 def compute_entry_hash(
@@ -74,7 +74,8 @@ class AuditRepository:
         row = result.first()
         if row is None:
             return GENESIS_HASH, 0
-        return str(row[0]), int(row[1])
+        head: tuple[str, int] = (str(row[0]), int(row[1]))
+        return head
 
     async def append(
         self,

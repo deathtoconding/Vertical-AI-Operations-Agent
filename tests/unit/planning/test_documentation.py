@@ -139,6 +139,7 @@ def test_adr_numbers_are_unique_and_ordered() -> None:
 THREAT_ROW = re.compile(r"^\|\s*(T-\d{2})\s*\|(.+)\|\s*$", re.MULTILINE)
 
 
+@pytest.mark.story("SEC-001")
 def test_threat_model_has_rated_and_mitigated_threats() -> None:
     text = read("docs/security/threat-model.md")
     rows = THREAT_ROW.findall(text)
@@ -157,12 +158,14 @@ def test_threat_model_has_rated_and_mitigated_threats() -> None:
         assert residual, f"{threat_id} does not state its residual risk"
 
 
+@pytest.mark.story("SEC-001")
 def test_threat_model_covers_every_required_area() -> None:
     text = read("docs/security/threat-model.md")
     for area in ("LLM", "Tools", "External inputs", "Database", "UI", "Credentials"):
         assert area in text, f"threat model does not cover {area}"
 
 
+@pytest.mark.story("SEC-001")
 def test_security_controls_map_to_proof() -> None:
     controls = read("docs/security/security-controls.md")
     for control in (
@@ -224,6 +227,7 @@ REQUIRED_RUNBOOKS = {
 
 
 @pytest.mark.parametrize(("name", "sections"), sorted(REQUIRED_RUNBOOKS.items()))
+@pytest.mark.story("SRE-005")
 def test_runbook_has_required_sections(name: str, sections: list[str]) -> None:
     text = (DOCS / "sre" / "runbooks" / name).read_text(encoding="utf-8")
     for section in sections:
@@ -232,6 +236,7 @@ def test_runbook_has_required_sections(name: str, sections: list[str]) -> None:
         assert section in text or section.lower() in text.lower(), f"{name}: missing {section}"
 
 
+@pytest.mark.story("SRE-005")
 def test_runbooks_reference_real_metrics_and_endpoints() -> None:
     """Runbooks must point at things that exist, not at invented ones."""
     from app.core.telemetry import METRIC_NAMES  # imported lazily: telemetry ships with SRE-001
@@ -243,6 +248,7 @@ def test_runbooks_reference_real_metrics_and_endpoints() -> None:
             assert metric in known_metrics, f"{name} references unknown metric {metric}"
 
 
+@pytest.mark.story("SRE-005")
 def test_unsafe_behaviour_runbook_has_containment_first() -> None:
     text = read("docs/sre/runbooks/unsafe-agent-behaviour.md")
     assert "observe_only" in text, "the containment step must disable autonomy"

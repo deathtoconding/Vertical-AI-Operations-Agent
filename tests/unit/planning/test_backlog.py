@@ -9,6 +9,7 @@ import csv
 import io
 from itertools import pairwise
 from pathlib import Path
+from typing import Any
 
 import pytest
 import yaml
@@ -195,7 +196,7 @@ def test_export_script_main_runs(tmp_path: Path) -> None:
 # --------------------------------------------------------------------------- #
 
 
-def _minimal_document() -> dict:
+def _minimal_document() -> dict[str, Any]:
     return {
         "version": 2,
         "project": {"key": "AIOPS"},
@@ -222,7 +223,7 @@ def _minimal_document() -> dict:
     }
 
 
-def _write(tmp_path: Path, document: dict) -> Path:
+def _write(tmp_path: Path, document: dict[str, Any]) -> Path:
     path = tmp_path / "backlog.yaml"
     path.write_text(yaml.safe_dump(document), encoding="utf-8")
     return path

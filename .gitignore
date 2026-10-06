@@ -3,25 +3,29 @@ __pycache__/
 *.py[cod]
 *.egg-info/
 .eggs/
-build/
-dist/
-.venv/
-venv/
+/build/
+/dist/
+/.venv/
+/venv/
 .mypy_cache/
 .ruff_cache/
 .pytest_cache/
 .coverage
 coverage.xml
-htmlcov/
+/htmlcov/
 
 # --- Local runtime state ---
-*.db
-*.sqlite
-*.sqlite3
-.data/
-artifacts/
-logs/
-.pgdata/
+# Every entry here is anchored to the repository root. An unanchored ``logs/`` (or ``build/``,
+# ``dist/``, ``out/``) matches a directory *anywhere* in the tree: it silently ignored
+# ``app/integrations/logs/``, a source package the application imports, so the module existed
+# locally and was missing from every clone and container build. Anchor runtime paths.
+/*.db
+/*.sqlite
+/*.sqlite3
+/.data/
+/artifacts/
+/logs/
+/.pgdata/
 
 # --- Secrets (SEC-005 / AI coding rule 6) ---
 # Compose secrets: the real files exist only on the machine that runs the stack.
@@ -40,4 +44,5 @@ infra/compose/secrets/*
 .vscode/
 
 # --- AI evaluation output ---
+# The report is a build artefact (CI uploads it); the committed baseline is ``evals/baselines/``.
 evals/results/

@@ -62,7 +62,5 @@ class BaseRepository(Generic[RowT, DomainT]):
     async def count(self) -> int:
         from sqlalchemy import func
 
-        result = await self.session.execute(
-            select(func.count()).select_from(self.row_class)  # type: ignore[arg-type]
-        )
+        result = await self.session.execute(select(func.count()).select_from(self.row_class))
         return int(result.scalar_one())

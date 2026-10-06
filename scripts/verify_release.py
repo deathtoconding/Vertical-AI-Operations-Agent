@@ -92,17 +92,20 @@ class ReleaseVerifier:
     def check_readiness(self) -> CheckResult:
         response = self.client.get("/ready")
         body = self._json(response)
-        ready = body.get("status") == "ready"
-        # A readiness endpoint that reports ready while a dependency is down is worse than none:
-        # the status code and the payload must agree.
+        database = body.get("database") or {}
+        # The readiness vocabulary is the one the service documents (``ok`` / ``degraded``, with a
+        # per-dependency detail block); what matters for a release is that the *code and the
+        # payload agree* — a 200 that says "degraded" is a lie either way round.
+        ready = str(body.get("status")) in {"ok", "ready"} and database.get("status") == "ok"
         consistent = (response.status_code == 200) == ready
-        ok = response.status_code in {200, 503} and "checks" in body and consistent
+        ok = response.status_code in {200, 503} and "database" in body and consistent
         return CheckResult(
             "readiness",
             ok,
             (
-                f"/ready returned HTTP {response.status_code} with status={body.get('status')!r} "
-                f"({len(body.get('checks', {}))} dependency checks)"
+                f"/ready returned HTTP {response.status_code} with status={body.get('status')!r}, "
+                f"database={database.get('status')!r}, "
+                f"degraded={body.get('degraded_integrations', [])}"
             ),
             {"status_code": response.status_code, "body": body},
         )
@@ -154,7 +157,7 @@ class ReleaseVerifier:
             json={"scenario": "A", "orchestrate": True, "reset": True},
         )
         body = self._json(simulate)
-        incident_id = (body.get("created_ids") or [None])[0]
+        incident_id = next(iter(self._scenario_incident_ids(body)), None)
 
         approvals = self._json(
             self.client.get("/api/v1/approvals", params={"pending_only": "true"})
@@ -192,7 +195,7 @@ class ReleaseVerifier:
             json={"scenario": "A", "orchestrate": True, "reset": True},
         )
         body = self._json(simulate)
-        created = body.get("created_ids") or []
+        created = self._scenario_incident_ids(body)
         if simulate.status_code != 200 or not created:
             return CheckResult(
                 "lifecycle",
@@ -209,11 +212,16 @@ class ReleaseVerifier:
             incident = self._incident(incident_id)
             state = str(incident.get("status") or "UNKNOWN")
             approvals = self._pending_approvals(incident_id)
-            if state in TERMINAL_STATES or (state == "WAITING_APPROVAL" and approvals):
+            # The *incident* is OPEN while its run waits at the gate: the pending approval is the
+            # signal that a human decision is what the candidate is waiting for. Waiting for the
+            # incident status to say WAITING_APPROVAL would time out and blame the candidate for
+            # the verifier's own misunderstanding (run state and incident status are different
+            # state machines).
+            if state in TERMINAL_STATES or approvals:
                 break
             time.sleep(1.0)
 
-        if state == "WAITING_APPROVAL" and approvals:
+        if approvals and state not in TERMINAL_STATES:
             approval = approvals[0]
             decision = self.client.post(
                 f"/api/v1/approvals/{approval['id']}/decision",
@@ -291,6 +299,18 @@ class ReleaseVerifier:
         ]
 
     # -- helpers ------------------------------------------------------------ #
+
+    @staticmethod
+    def _scenario_incident_ids(body: dict[str, Any]) -> list[str]:
+        """Incident ids produced by ``/detection/simulate``.
+
+        A re-scan inside the deduplication window returns the *existing* incident under
+        ``incidents_deduplicated`` rather than creating a second one — that is the detector
+        working as designed, so the verifier drives whichever incident the scan points at.
+        """
+        created = body.get("incidents_created") or body.get("created_ids") or []
+        deduplicated = body.get("incidents_deduplicated") or []
+        return [str(item) for item in [*created, *deduplicated]]
 
     def _incident(self, incident_id: str) -> dict[str, Any]:
         payload = self._json(self.client.get(f"/api/v1/incidents/{incident_id}"))

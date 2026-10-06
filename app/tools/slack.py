@@ -32,6 +32,7 @@ SPEC = ToolSpec(
             "severity": {"type": "string", "pattern": "^SEV[1-4]$"},
             "channel": {"type": "string", "maxLength": 80},
             "action_url": {"type": "string", "maxLength": 500},
+            "evidence_count": {"type": "integer", "minimum": 0, "maximum": 100000},
         },
         "required": ["incident_id", "text"],
         "additionalProperties": False,
@@ -48,6 +49,7 @@ async def _handler(params: SlackNotifyParams, context: ToolContext) -> ToolResul
         "severity": params.severity,
         "channel": params.channel,
         "action_url": params.action_url,
+        "evidence_count": params.evidence_count,
         "run_id": context.run_id,
     }
     data = await context.integrations.slack_notify(payload)

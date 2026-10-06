@@ -25,6 +25,7 @@ from app.core.errors import IntegrationError
 from app.core.logging import get_logger, redact_mapping
 from app.core.sanitization import sanitize_untrusted
 from app.core.telemetry import EVIDENCE_COLLECTED, EVIDENCE_SOURCE_FAILURES
+from app.core.tracing import span
 from app.domain.enums import (
     Confidence,
     EvidenceKind,
@@ -167,7 +168,10 @@ class EvidenceCollector:
         }.get(source)
         if handler is None:
             return [], {"source": source.value, "reason": "not_implemented"}
-        return await handler(incident)
+        with span(
+            f"evidence.{source.value}", incident_id=incident.id, run_id=incident.agent_run_id
+        ):
+            return await handler(incident)
 
     async def _metrics(
         self, incident: Incident

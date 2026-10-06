@@ -127,9 +127,9 @@ async def test_core_entities_survive_a_restart(engine, database_url: str) -> Non
     fresh_factory = async_sessionmaker(fresh_engine, expire_on_commit=False)
     try:
         async with fresh_factory() as session:
-            incident = await IncidentRepository(session).get(incident_id)
-            assert incident is not None, "incidents must survive a restart"
-            assert incident.title.startswith("API error rate spike")
+            reloaded_incident = await IncidentRepository(session).get(incident_id)
+            assert reloaded_incident is not None, "incidents must survive a restart"
+            assert reloaded_incident.title.startswith("API error rate spike")
 
             evidence_repo = EvidenceRepository(session)
             reloaded = await evidence_repo.get_many(evidence_ids)

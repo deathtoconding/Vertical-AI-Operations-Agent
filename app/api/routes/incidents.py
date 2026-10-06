@@ -143,7 +143,7 @@ async def collect_evidence(
     if incident is None:
         raise NotFoundError("Incident not found.", details={"incident_id": incident_id})
 
-    container = services.container  # type: ignore[attr-defined]
+    container = services.container
     collector = EvidenceCollector(container.settings, container.integrations)
     report = await collector.collect(incident)
     persisted = await services.evidence.persist(incident_id, report.drafts)
@@ -187,7 +187,7 @@ async def investigate(incident_id: str, services: ServicesDep, actor: ActorDep) 
     if incident is None:
         raise NotFoundError("Incident not found.", details={"incident_id": incident_id})
 
-    container = services.container  # type: ignore[attr-defined]
+    container = services.container
     evidence = await services.evidence.list_for_incident(incident_id)
     anomalies = await services.anomalies.list_for_incident(incident_id)
     anomaly = (

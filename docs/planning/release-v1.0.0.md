@@ -84,11 +84,23 @@ Recorded from the release candidate (sandbox mode, deterministic reasoner):
 | Approval gate on HIGH-risk rollback | pass — `REQUIRE_APPROVAL`, no execution without a decision |
 | End-to-end lifecycle | pass — incident reached `RESOLVED` with `verification_outcome=success` |
 | Audit chain | pass — valid, no divergence |
-| Rollback drill | pass — release changed back, recovery verified by the independent checks |
+| Rollback drill | pass — release restored, recovery verified by the independent checks (run with an admin token; see §6) |
+| Recurrence after resolution | pass — a resolved incident no longer suppresses the same fault inside the dedup window, so a rollback that did not hold raises a new incident |
 | AI evaluation | pass — 10/10 cases, every dimension at or above its floor, no safety violation |
 
 The exact artefacts (`release-report.json`, `rollback-report.json`, `evals/results/report.json`) are
 produced by the commands in §2 and attached to the release PR.
+
+Reproduce them locally against a candidate (sandbox profile, deterministic reasoner):
+
+```bash
+scripts/pg_server.py --data .pgdata --database aiops        # local PostgreSQL
+export AIOPS_DATABASE_URL="$(cat .pgdata/.url)"
+python -m alembic -c app/persistence/alembic.ini upgrade head
+uvicorn app.main:app --host 0.0.0.0 --port 8000 --workers 2
+python scripts/verify_release.py --base-url http://127.0.0.1:8000 --token dev-sre-token    --json release-report.json
+python scripts/rollback_drill.py --base-url http://127.0.0.1:8000 --token dev-admin-token  --json rollback-report.json
+```
 
 ## 5. Rollback plan
 
@@ -125,6 +137,14 @@ Stated here rather than discovered later:
   starting points to be calibrated against real traffic (`docs/sre/slos.md` says so explicitly).
 - **Static tokens.** Authentication is a static token set bound to roles (ADR-0008); integration
   with an identity provider is roadmap work, not MVP.
+- **Guardrails govern remediation frequency.** A second high-risk action on the same fault within
+  the hour escalates to `critical` (`repeat_high_risk_action`), and more than
+  `AIOPS_MAX_ROLLBACKS_PER_HOUR` rollbacks an hour are denied outright. That is intentional — an
+  operation that keeps rolling back is not converging — and it applies to the rollback drill too:
+  the drill needs an admin approver for a repeat run and fails with the policy reason when refused.
+- **The operator console is read-and-approve, not a full administration surface.** It shows the
+  dashboard, the incident timeline and the approval gate; configuration changes go through the API
+  with an admin token.
 
 ## 7. Upgrade and rollback compatibility
 

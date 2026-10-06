@@ -75,7 +75,9 @@ class VerificationEngine:
         if action is None:
             raise ValueError(f"action {action_id} does not exist")
 
-        expected = expected_state or action.expected_state or {}
+        expected = self._resolve_references(
+            dict(expected_state or action.expected_state or {}), action=action
+        )
         window = float(
             wait_seconds if wait_seconds is not None else self.settings.verification_window_seconds
         )
@@ -112,6 +114,25 @@ class VerificationEngine:
             window_seconds=self.settings.verification_window_seconds,
             actor=actor,
         )
+
+    @staticmethod
+    def _resolve_references(expected: dict[str, Any], *, action: Any) -> dict[str, Any]:
+        """Resolve the identifier of an artefact the action created.
+
+        A declared expectation says *what must be true* ("an issue exists for this incident"); it
+        cannot contain the issue key, because the key does not exist until the tool runs. When the
+        expectation declares ``reference: action.external_id``, the id the executor recorded is
+        used to say *which* artefact to look at — the pass criterion stays the declared one, which
+        is the distinction that keeps this from becoming "derive the expectation from whatever
+        happened".
+        """
+        if expected.get("reference") != "action.external_id":
+            return expected
+        data = getattr(action, "result", None) or {}
+        external_id = data.get("issue_key") or data.get("external_id") or data.get("key")
+        if external_id:
+            expected.setdefault("issue_key", str(external_id))
+        return expected
 
     # ------------------------------------------------------------------ #
     # Check planning

@@ -127,6 +127,15 @@ def install_error_handlers(app: FastAPI) -> None:
 
     @app.exception_handler(RequestValidationError)
     async def _validation_error(request: Request, exc: RequestValidationError) -> JSONResponse:
+        """A rejected payload is counted and audited, then answered with the error contract."""
+        from app.api.dependencies import audit_validation_rejection
+        from app.core.telemetry import VALIDATION_REJECTIONS
+
+        VALIDATION_REJECTIONS.labels(route=request.url.path).inc()
+        try:
+            await audit_validation_rejection(request, exc)
+        except Exception as audit_error:  # pragma: no cover - auditing never masks the 422
+            logger.warning("validation_rejection_audit_failed", error=type(audit_error).__name__)
         return JSONResponse(
             status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
             content=error_body(

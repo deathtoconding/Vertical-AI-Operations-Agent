@@ -94,7 +94,15 @@ def reset_tracing_for_tests() -> None:
     global _provider, _memory_exporter
     _provider = None
     _memory_exporter = None
-    trace._TRACER_PROVIDER = None  # type: ignore[attr-defined]  # OTel has no public reset
+    # OTel exposes no public way to unset the global provider; this is the documented
+    # workaround used by the SDK's own test suite. Clearing the module-level provider is not
+    # enough: ``set_tracer_provider`` only installs a provider *once* per process, so a test
+    # that wants its own in-memory exporter must reset that guard too — otherwise it silently
+    # keeps exporting to whichever provider the first test configured.
+    trace._TRACER_PROVIDER = None
+    guard = getattr(trace, "_TRACER_PROVIDER_SET_ONCE", None)
+    if guard is not None:  # pragma: no cover - present in every supported OTel version
+        guard._done = False
 
 
 def incident_context(incident_id: str) -> SpanContext:

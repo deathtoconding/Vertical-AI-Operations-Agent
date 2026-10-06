@@ -24,7 +24,7 @@ on the quality of its prose.
 | System | Role in the domain | MVP access | Adapter |
 |---|---|---|---|
 | Operated SaaS service (`checkout-service` in the sandbox profile) | The thing being operated | read/act via simulation | `app/sandbox/simulator.py` |
-| Deployment platform | Releases, rollback target | read + rollback (simulated) | `app/integrations/deployment` |
+| Deployment platform | Releases, rollback target | read + rollback (simulated) | `app/integrations/live.py`, `app/integrations/sandbox_providers.py` |
 | GitHub | Commits, PRs, deployments, repo metadata | **read-only** | `app/integrations/github/client.py` |
 | Jira | Incident tickets, context attachments | create/read/update | `app/integrations/jira/client.py` |
 | Slack | Operational notification | write-only (webhook) | `app/integrations/slack/client.py` |

@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import json
 from pathlib import Path
+from typing import Any
 
 import pytest
 
@@ -78,7 +79,7 @@ def clean_metrics(**overrides: float) -> dict[str, float]:
     return values
 
 
-def baseline(**overrides: float) -> dict:
+def baseline(**overrides: float) -> dict[str, Any]:
     return {
         "dataset": "aiops-mvp-golden",
         "dataset_version": 3,

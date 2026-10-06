@@ -15,7 +15,8 @@ from __future__ import annotations
 import asyncio
 import json
 import logging
-from typing import Any
+from collections.abc import Iterator
+from typing import Any, cast
 
 import pytest
 import structlog
@@ -36,20 +37,8 @@ from app.core.logging import (
 pytestmark = [pytest.mark.story("SRE-002"), pytest.mark.unit]
 
 
-#: Synthetic credentials used to prove the redaction processor works.
-#:
-#: They are assembled at run time on purpose: a complete provider-shaped literal in the source
-#: trips secret-scanning push protection, and a scanner that cries wolf on our own fixtures is a
-#: scanner people learn to ignore (SEC-005). The values still match the value-shape patterns the
-#: redactor is built on, so the assertions remain meaningful.
-FAKE_GITHUB_TOKEN = "gh" + "p_" + "a" * 36
-FAKE_SLACK_TOKEN = "xox" + "b-" + "0" * 12 + "-" + "b" * 20
-FAKE_API_KEY = "sk-" + "a" * 24
-FAKE_JWT = "Bearer " + "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9"
-
-
 @pytest.fixture(autouse=True)
-def _clean_logging_state():
+def _clean_logging_state() -> Iterator[None]:
     reset_logging_for_tests()
     yield
     reset_logging_for_tests()
@@ -62,7 +51,7 @@ def render(event: dict[str, Any]) -> dict[str, Any]:
     for processor in structlog.get_config()["processors"]:
         payload = processor(None, "info", payload)
         if isinstance(payload, str):
-            return json.loads(payload)
+            return cast(dict[str, Any], json.loads(payload))
     raise AssertionError("the configured chain has no renderer")
 
 
@@ -120,6 +109,20 @@ def test_correlation_ids_are_attached_to_rendered_lines() -> None:
 # Redaction
 # --------------------------------------------------------------------------- #
 
+# --------------------------------------------------------------------------- #
+# Credential-shaped fixtures
+# --------------------------------------------------------------------------- #
+# The redactor must be tested against values that *look* like real credentials, or the test proves
+# nothing. But a literal that a security scanner cannot distinguish from a live token is an alarm
+# that is correct to raise: GitHub push protection blocks the push, and every contributor hits it.
+# The fixtures are therefore assembled at run time from fragments — same string, same assertion,
+# no false positive for the scanners that guard this repository and its remotes.
+
+
+def credential_shaped(*parts: str) -> str:
+    """Assemble a credential-shaped value without embedding one in the source."""
+    return "".join(parts)
+
 
 @pytest.mark.parametrize(
     "key",
@@ -132,10 +135,10 @@ def test_sensitive_keys_are_redacted_regardless_of_value(key: str) -> None:
 @pytest.mark.parametrize(
     "value",
     [
-        f"bearer {FAKE_GITHUB_TOKEN}",
-        FAKE_API_KEY,
-        FAKE_SLACK_TOKEN,
-        FAKE_JWT,
+        credential_shaped("bearer gh", "p_abcdefghijklmnopqrstuvwxyz0123"),
+        credential_shaped("sk-", "abcdefghijklmnopqrstuvwx"),
+        credential_shaped("xoxb-", "000000000000-", "abcdefghijklmnop"),
+        credential_shaped("Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6", "IkpXVCJ9"),
     ],
 )
 def test_credential_shaped_values_are_redacted_even_under_a_harmless_key(value: str) -> None:
@@ -170,13 +173,24 @@ def test_ordinary_values_pass_through_unchanged() -> None:
 
 def test_the_processor_redacts_a_credential_however_it_is_named() -> None:
     event = _redaction_processor(
-        None, "info", {"event": "integration_call", "auth": FAKE_GITHUB_TOKEN}
+        None,
+        "info",
+        {
+            "event": "integration_call",
+            "auth": credential_shaped("gh", "p_abcdefghijklmnopqrstuvwxyz01"),
+        },
     )
     assert event["auth"] == REDACTED
 
 
 def test_a_secret_reaching_a_log_call_is_redacted_by_the_configured_chain() -> None:
-    line = render({"event": "integration_call", "token": FAKE_GITHUB_TOKEN, "status": 200})
+    line = render(
+        {
+            "event": "integration_call",
+            "token": credential_shaped("ghp_", "abcdefghijklmnopqrstuvwxyz0123"),
+            "status": 200,
+        }
+    )
     assert line["token"] == REDACTED, "the chain must redact, not just the helper"
     assert line["status"] == 200
     assert line["event"] == "integration_call"

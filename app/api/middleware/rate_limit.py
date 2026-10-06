@@ -12,7 +12,7 @@ from __future__ import annotations
 
 import time
 from collections import defaultdict, deque
-from typing import Any
+from typing import Any, cast
 
 from starlette.middleware.base import BaseHTTPMiddleware
 from starlette.requests import Request
@@ -43,7 +43,7 @@ class RateLimitMiddleware(BaseHTTPMiddleware):
         # "/healthcheck" is not a probe we promised to leave unthrottled.
         exempt = any(path == prefix or path.startswith(f"{prefix}/") for prefix in EXEMPT_PATHS)
         if request.method == "OPTIONS" or exempt:
-            return await call_next(request)
+            return cast(Response, await call_next(request))
 
         client = self._client_key(request)
         now = time.monotonic()
@@ -70,7 +70,7 @@ class RateLimitMiddleware(BaseHTTPMiddleware):
             )
 
         hits.append(now)
-        response = await call_next(request)
+        response = cast(Response, await call_next(request))
         remaining = max(0, limit - len(hits))
         response.headers["X-RateLimit-Limit"] = str(limit)
         response.headers["X-RateLimit-Remaining"] = str(remaining)

@@ -12,7 +12,7 @@ business rules live behind it. Two rules are enforced here and nowhere else:
 from __future__ import annotations
 
 from collections.abc import AsyncIterator
-from typing import Annotated, Any
+from typing import Annotated, Any, cast
 
 from fastapi import Depends, Header, Request
 
@@ -27,7 +27,7 @@ def get_container(request: Request) -> Container:
     container = getattr(request.app.state, "container", None)
     if container is None:  # pragma: no cover - lifespan always sets this
         raise RuntimeError("application container is not initialised")
-    return container
+    return cast(Container, container)
 
 
 def get_settings_from_app(request: Request) -> Settings:
@@ -97,8 +97,34 @@ async def audit_authorization_denial(request: Request, actor: Actor, error: Exce
         )
 
 
+async def audit_validation_rejection(request: Request, error: Exception) -> None:
+    """Record a rejected payload, best-effort, without echoing what was rejected.
+
+    Counted *and* audited (SEC-006): a burst of 422s is how a broken client, a fuzzer or a
+    probing request looks from here, and neither should be invisible. The payload is never
+    stored — it failed validation, so it may contain anything, including credentials.
+    """
+    container = getattr(request.app.state, "container", None)
+    if container is None:
+        return
+    try:
+        actor = authenticate(request.headers.get("Authorization"), container.settings)
+    except Exception:
+        actor = Actor.system()
+    async with container.transaction() as services:
+        await services.audit.append(
+            AuditEventType.VALIDATION_REJECTED,
+            actor=actor.actor_id,
+            role=actor.role.value,
+            outcome="rejected",
+            reason=str(error)[:300],
+            payload={"path": request.url.path, "method": request.method},
+        )
+
+
 __all__ = [
     "AuthorizationError",
+    "audit_validation_rejection",
     "get_actor",
     "get_container",
     "get_services",

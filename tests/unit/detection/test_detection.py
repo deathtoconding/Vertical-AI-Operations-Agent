@@ -8,6 +8,7 @@ is not a detector.
 from __future__ import annotations
 
 import datetime as dt
+from typing import Any
 
 import pytest
 
@@ -37,7 +38,7 @@ class FakeMetrics:
         self.metric = metric
         self.values = values
 
-    async def query_metric(self, service: str, metric: str, window_minutes: int) -> dict:
+    async def query_metric(self, service: str, metric: str, window_minutes: int) -> dict[str, Any]:
         points = [
             {
                 "timestamp": (NOW - dt.timedelta(minutes=len(self.values) - index)).isoformat(),

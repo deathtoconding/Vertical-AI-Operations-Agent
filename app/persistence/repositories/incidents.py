@@ -14,16 +14,44 @@ from app.persistence.models.base import utcnow
 from app.persistence.models.incident import AnomalyRow, IncidentRow
 from app.persistence.repositories.base import BaseRepository
 
+#: Explicit alias: the class below defines a ``list`` method, which shadows the builtin inside
+#: the class body and would otherwise make ``list[Incident]`` in its annotations unresolvable.
+IncidentList = list[Incident]
+
 
 class IncidentRepository(BaseRepository[IncidentRow, Incident]):
     row_class = IncidentRow
     domain_class = Incident
 
     async def get_by_dedup_key(self, dedup_key: str) -> Incident | None:
+        """Exact lookup of the row that owns a bucket key."""
         result = await self.session.execute(
             select(IncidentRow).where(IncidentRow.dedup_key == dedup_key)
         )
         row = result.scalar_one_or_none()
+        return self.to_domain(row) if row else None
+
+    async def get_active_by_dedup_key(self, dedup_key: str) -> Incident | None:
+        """The *active* incident for a detection bucket, if one exists.
+
+        Deduplication is about not opening a second incident while one is still being worked on.
+        A finished incident must not swallow the next detection: once an incident is resolved (or
+        escalated to a human), the same deviation recurring is new information — a rollback that
+        did not hold, a fix that did not ship — and it deserves its own incident instead of being
+        counted as a recurrence of a closed one.
+
+        Lookup is by key *prefix* because a bucket key is reused after the incident that owned it
+        reached a terminal state; the later incident carries a derived key (see
+        :mod:`app.application.incident_service`) so the unique constraint still holds.
+        """
+        terminal = sorted(status.value for status in IncidentStatus if status.is_terminal)
+        result = await self.session.execute(
+            select(IncidentRow)
+            .where(IncidentRow.dedup_key.like(f"{dedup_key}%"))
+            .where(IncidentRow.status.notin_(terminal))
+            .order_by(IncidentRow.detected_at.desc())
+        )
+        row = result.scalars().first()
         return self.to_domain(row) if row else None
 
     async def create(self, values: dict[str, Any]) -> Incident:
@@ -61,7 +89,7 @@ class IncidentRepository(BaseRepository[IncidentRow, Incident]):
         result = await self.session.execute(statement)
         return self.to_domain_list(list(result.scalars().all()))
 
-    async def list_open(self, limit: int = 100) -> list[Incident]:
+    async def list_open(self, limit: int = 100) -> IncidentList:
         result = await self.session.execute(
             select(IncidentRow)
             .where(
@@ -101,7 +129,7 @@ class IncidentRepository(BaseRepository[IncidentRow, Incident]):
 
     async def list_recent(
         self, *, since: datetime, service: str | None = None, limit: int = 50
-    ) -> list[Incident]:
+    ) -> IncidentList:
         statement = (
             select(IncidentRow)
             .where(IncidentRow.detected_at >= since)
@@ -113,7 +141,7 @@ class IncidentRepository(BaseRepository[IncidentRow, Incident]):
         result = await self.session.execute(statement)
         return self.to_domain_list(list(result.scalars().all()))
 
-    async def list_stale_open(self, older_than_minutes: int = 1440) -> list[Incident]:
+    async def list_stale_open(self, older_than_minutes: int = 1440) -> IncidentList:
         """Open incidents that should have reached a terminal state by now.
 
         Backs the "lost critical incidents" SLI: an incident that never resolves or escalates

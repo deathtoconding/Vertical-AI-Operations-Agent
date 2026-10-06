@@ -38,6 +38,7 @@ from app.core.telemetry import (
     APPROVALS_REQUESTED,
     ESCALATIONS,
 )
+from app.core.tracing import add_event, span
 from app.domain.actions import ActionRequest
 from app.domain.enums import (
     ActionStatus,
@@ -226,7 +227,15 @@ class IncidentOrchestrator:
             )
 
         if run.state is AgentState.INVESTIGATING:
-            run, investigation_note, diagnosis = await self._investigate(run, incident, actor=actor)
+            with span(
+                "lifecycle.investigation",
+                incident_id=incident.id,
+                run_id=run.id,
+                actor_id=actor.actor_id,
+            ):
+                run, investigation_note, diagnosis = await self._investigate(
+                    run, incident, actor=actor
+                )
             notes.append(investigation_note)
             if diagnosis is None:
                 run = await self._escalate(run, incident, actor=actor, reason=investigation_note)
@@ -236,7 +245,13 @@ class IncidentOrchestrator:
             )
 
         if run.state is AgentState.PLANNED:
-            run, plan_note, requires_approval = await self._plan(run, incident, actor=actor)
+            with span(
+                "lifecycle.planning",
+                incident_id=incident.id,
+                run_id=run.id,
+                actor_id=actor.actor_id,
+            ):
+                run, plan_note, requires_approval = await self._plan(run, incident, actor=actor)
             notes.append(plan_note)
             if requires_approval:
                 run = await self._transition(
@@ -264,7 +279,13 @@ class IncidentOrchestrator:
             )
 
         if run.state is AgentState.EXECUTING:
-            run, execute_note, executed_action = await self._execute(run, incident, actor=actor)
+            with span(
+                "lifecycle.execution",
+                incident_id=incident.id,
+                run_id=run.id,
+                actor_id=actor.actor_id,
+            ):
+                run, execute_note, executed_action = await self._execute(run, incident, actor=actor)
             notes.append(execute_note)
             if executed_action is None:
                 run = await self._escalate(run, incident, actor=actor, reason=execute_note)
@@ -274,7 +295,13 @@ class IncidentOrchestrator:
             )
 
         if run.state is AgentState.VERIFYING:
-            run, verify_note = await self._verify(run, incident, actor=actor)
+            with span(
+                "lifecycle.verification",
+                incident_id=incident.id,
+                run_id=run.id,
+                actor_id=actor.actor_id,
+            ):
+                run, verify_note = await self._verify(run, incident, actor=actor)
             notes.append(verify_note)
             if run.state is AgentState.RESOLVED:
                 return run, " | ".join(notes)
@@ -289,7 +316,12 @@ class IncidentOrchestrator:
     async def _investigate(
         self, run: Any, incident: Incident, *, actor: Actor
     ) -> tuple[Any, str, Any]:
-        report = await self.collector.collect(incident)
+        with span(
+            "evidence.collect",
+            incident_id=incident.id,
+            run_id=run.id,
+        ):
+            report = await self.collector.collect(incident)
         persisted = await self.evidence.persist(incident.id, report.drafts)
         await self.incidents.update(
             incident.id,
@@ -322,12 +354,21 @@ class IncidentOrchestrator:
             )
 
         anomaly = await self._detection_context(incident)
-        diagnosis = await self.investigator.investigate(
-            incident,
-            persisted,
-            anomaly=anomaly,
-            degradations=report.degradations,
-        )
+        with span(
+            "reasoning.llm",
+            incident_id=incident.id,
+            run_id=run.id,
+            llm_model=self.settings.llm_model,
+        ) as current:
+            diagnosis = await self.investigator.investigate(
+                incident,
+                persisted,
+                anomaly=anomaly,
+                degradations=report.degradations,
+            )
+            current.set_attribute("reasoner", diagnosis.reasoner)
+            current.set_attribute("confidence", float(diagnosis.confidence))
+            current.set_attribute("evidence.count", len(diagnosis.evidence_ids))
         await self.incidents.update(incident.id, {"diagnosis": diagnosis.model_dump(mode="json")})
         updated = await self.runs.note(
             run.id,
@@ -423,13 +464,20 @@ class IncidentOrchestrator:
             )
 
         for request in plan_input.requests:
-            action, decision, notes = await self.executor.prepare(
-                request,
-                actor=actor,
-                incident=incident,
+            with span(
+                "policy.decision",
+                incident_id=incident.id,
                 run_id=run.id,
-                prior_rollbacks=prior_rollbacks,
-            )
+                tool_name=request.tool_name,
+            ) as current:
+                action, decision, notes = await self.executor.prepare(
+                    request,
+                    actor=actor,
+                    incident=incident,
+                    run_id=run.id,
+                    prior_rollbacks=prior_rollbacks,
+                )
+                current.set_attribute("policy.decision", decision.decision.value)
             if action is None:
                 rejected.append(
                     {
@@ -521,6 +569,8 @@ class IncidentOrchestrator:
                 ),
                 "incident_id": incident.id,
                 "severity": incident.severity.value,
+                "evidence_count": incident.evidence_count,
+                "action_url": f"{self.settings.public_base_url}/ui?incident={incident.id}",
             },
             rationale="serious incidents always notify a human, independent of the model's plan",
             evidence_ids=[],
@@ -597,7 +647,14 @@ class IncidentOrchestrator:
             )
             _ = notes
             return None
-        outcome = await self.executor.execute(action, actor=actor, incident=incident)
+        with span(
+            "action.execute",
+            incident_id=incident.id,
+            run_id=run.id,
+            tool_name=action.tool_name,
+            risk_level=action.risk.value,
+        ):
+            outcome = await self.executor.execute(action, actor=actor, incident=incident)
         if outcome.executed and outcome.result and outcome.result.data.get("key"):
             await self.incidents.update(
                 incident.id, {"jira_issue_key": str(outcome.result.data["key"])}
@@ -605,7 +662,10 @@ class IncidentOrchestrator:
         return action
 
     async def _approved_action(self, run_id: str) -> Any | None:
-        actions = await self.actions.list_for_incident((await self.runs.get(run_id)).incident_id)
+        run = await self.runs.get(run_id)
+        if run is None:
+            return None
+        actions = await self.actions.list_for_incident(run.incident_id)
         for action in actions:
             if not action.requires_approval:
                 continue
@@ -688,7 +748,14 @@ class IncidentOrchestrator:
             action_id = executed[0].id
 
         if action_id is None:
-            result = await self.verifier.verify_incident(incident.id, actor=actor.actor_id)
+            with span(
+                "verification.check",
+                incident_id=incident.id,
+                run_id=run.id,
+                scope="incident",
+            ) as current:
+                result = await self.verifier.verify_incident(incident.id, actor=actor.actor_id)
+                current.set_attribute("verification.outcome", result.outcome.value)
         else:
             # The expectation is read from the action row itself, where it was recorded
             # *before* execution — not reconstructed from the plan after the fact.
@@ -804,6 +871,16 @@ class IncidentOrchestrator:
         guard: dict[str, Any] | None = None,
     ) -> Any:
         assert_transition(run.state, to_state, guard=guard)
+        with span(
+            "lifecycle.transition",
+            incident_id=run.incident_id,
+            run_id=run.id,
+            from_state=run.state.value,
+            to_state=to_state.value,
+            reason=reason,
+        ):
+            pass
+        add_event("transition", to_state=to_state.value, actor=actor.actor_id)
         await record_transition_audit(
             self.audit,
             from_state=run.state,

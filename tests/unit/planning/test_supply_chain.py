@@ -14,8 +14,9 @@ from __future__ import annotations
 import pathlib
 import re
 import subprocess
+import sys
 import tomllib
-from typing import Any
+from typing import Any, cast
 
 import pytest
 import yaml
@@ -32,7 +33,7 @@ WORKFLOW_FILES = sorted(WORKFLOWS.glob("*.yml")) + sorted(WORKFLOWS.glob("*.yaml
 
 
 def load_workflow(name: str) -> dict[str, Any]:
-    return yaml.safe_load((WORKFLOWS / name).read_text(encoding="utf-8"))
+    return cast(dict[str, Any], yaml.safe_load((WORKFLOWS / name).read_text(encoding="utf-8")))
 
 
 def steps_of(document: dict[str, Any]) -> list[dict[str, Any]]:
@@ -199,7 +200,9 @@ def test_the_evaluation_pipeline_blocks_on_regression() -> None:
         "the gate must compare against the stored baseline"
     )
     assert "tests/unit/eval" in commands
-    triggers = document.get("on") or document.get(True)
+    # PyYAML parses the bare `on:` key as boolean True (YAML 1.1).
+    keyed: dict[Any, Any] = document
+    triggers = document.get("on") or keyed.get(True)
     assert triggers, "the eval workflow must declare triggers"
     # The same gate must run against the *deployed candidate* before production.
     cd = yaml.safe_dump(load_workflow("cd.yml"))
@@ -304,6 +307,29 @@ def test_every_direct_dependency_is_locked(pyproject: dict[str, Any]) -> None:
         assert name in locked, f"{name} is declared but not locked"
 
 
+def test_locked_versions_match_the_declared_pins(pyproject: dict[str, Any]) -> None:
+    """The lock is only a lock if it agrees with the pins; drift here is silent and confusing."""
+    locked: dict[str, str] = {}
+    for line in LOCK.read_text(encoding="utf-8").splitlines():
+        if "==" not in line or line.strip().startswith("#"):
+            continue
+        name, _, version = line.partition("==")
+        locked[name.strip().lower().replace("_", "-")] = version.strip()
+
+    drift: list[str] = []
+    declared = [
+        *pyproject["project"]["dependencies"],
+        *pyproject["project"]["optional-dependencies"]["dev"],
+    ]
+    for requirement in declared:
+        bare = re.split(r"[<>=!\[; ]", requirement, maxsplit=1)[0].strip().lower()
+        bare = bare.replace("_", "-")
+        pin = requirement.split("==", 1)[1].split(";")[0].strip()
+        if locked.get(bare) != pin:
+            drift.append(f"{bare}: pyproject=={pin}, lock=={locked.get(bare)}")
+    assert not drift, "declared pins and the lock disagree:\n" + "\n".join(drift)
+
+
 def test_direct_dependencies_are_exactly_pinned_in_pyproject(pyproject: dict[str, Any]) -> None:
     declared = [
         *pyproject["project"]["dependencies"],
@@ -315,7 +341,7 @@ def test_direct_dependencies_are_exactly_pinned_in_pyproject(pyproject: dict[str
 
 def test_check_pins_script_agrees_with_the_repository() -> None:
     result = subprocess.run(  # noqa: S603 - fixed argv, no shell
-        ["/home/user/.venv/bin/python", str(REPO_ROOT / "scripts" / "check_pins.py")],
+        [sys.executable, str(REPO_ROOT / "scripts" / "check_pins.py")],
         cwd=REPO_ROOT,
         capture_output=True,
         text=True,

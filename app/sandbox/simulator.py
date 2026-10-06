@@ -428,7 +428,7 @@ class SandboxState:
     ) -> dict[str, Any]:
         degraded = self.active_fault(now)
         count = 68 if degraded else 4
-        customers = [
+        customers: list[dict[str, Any]] = [
             {
                 "customer_id": f"cus_{index:04d}",
                 "plan": ["starter", "growth", "enterprise"][index % 3],
@@ -441,7 +441,7 @@ class SandboxState:
             "provider": "stripe-sandbox",
             "window_minutes": window_minutes,
             "affected_count": count,
-            "total_mrr_at_risk": round(sum(item["mrr_at_risk"] for item in customers), 2),
+            "total_mrr_at_risk": round(sum(float(item["mrr_at_risk"]) for item in customers), 2),
             "customers": customers[:25],
             "simulated": True,
         }

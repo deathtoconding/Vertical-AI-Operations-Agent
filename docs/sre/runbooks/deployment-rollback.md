@@ -84,8 +84,16 @@ a human. Covers the simulated provider used by this repository and the changes n
 2. **Or run the drill path manually** (same code path the CD pipeline uses):
 
    ```bash
-   python scripts/rollback_drill.py --base-url "$BASE_URL" --json rollback-report.json
+   python scripts/rollback_drill.py --base-url "$BASE_URL" --token "$ADMIN_TOKEN" \
+     --json rollback-report.json
    ```
+
+   Use an admin token when a rollback has already happened in the last hour: policy escalates the
+   second high-risk action on the same fault to `critical` (`repeat_high_risk_action`), and a
+   critical-risk proposal needs an admin. The drill says so in its failure detail — it reports the
+   policy reason it was refused rather than pretending no approval was needed. The drill consumes a
+   rollback from the guardrail budget, and it repairs its own baseline (a dirty sandbox left by an
+   earlier scenario is reset and recorded), so it is safe to re-run.
 
 3. **If the agent cannot act** (policy denial, approval timeout, LLM outage), roll back with the
    platform's own tooling and record it: an unrecorded rollback leaves the incident's timeline
@@ -132,9 +140,11 @@ status:
    curl -fsS "$BASE_URL/api/v1/audit/verify" | jq '{valid, entries}'
    ```
 
-5. **No repeated incident:** the same dedup key does not reopen within the dedup window
-   (`aiops_incidents_deduplicated_total` incrementing is normal; a second incident for the same
-   fault minutes later is not).
+5. **The right number of incidents.** Deduplication applies while an incident is *still open*:
+   `aiops_incidents_deduplicated_total` incrementing during an active incident is normal. Once an
+   incident reaches `RESOLVED`/`ESCALATED`, the same fault recurring raises a **new** incident —
+   that is how a rollback which did not hold becomes visible, so a second incident minutes later is
+   expected when the first one is finished, and unexpected while it is still open.
 
 6. **Record the evidence** — attach `rollback-report.json` from `scripts/rollback_drill.py` (or the
    release report from `scripts/verify_release.py`) to the incident. A rollback without its

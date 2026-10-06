@@ -90,6 +90,9 @@ async def sandbox_state(services: ServicesDep, actor: ActorDep) -> dict[str, Any
         "previous_release": state.previous_release,
         "healthy": not state.active_fault(),
         "rollback_count": state.rollback_count,
+        # The drill artefact attaches what was rolled back and why; without this the evidence
+        # would say "one rollback happened" and leave out the only interesting part.
+        "rollback_log": list(state.rollback_log),
         "simulated": True,
     }
 

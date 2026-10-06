@@ -83,6 +83,10 @@ def expected_state_for(
         )
     elif tool_name == "jira.create_incident":
         state.description = "the escalation issue exists in the tracker"
+        # The issue key cannot be declared before the issue exists. The *criterion* ("an issue
+        # exists for this incident") is declared here; the key is resolved from the executor's
+        # recorded external id at verification time, because that is data, not a threshold.
+        state.reference = "action.external_id"
     else:
         state.description = "the notification is present in the channel"
     return state

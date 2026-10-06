@@ -34,18 +34,18 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--stop", action="store_true")
     args = parser.parse_args(argv)
 
-    import pgserver
+    from pgserver import get_server  # type: ignore[attr-defined]  # not re-exported by the stubs
 
     data_dir = pathlib.Path(args.data).resolve()
     data_dir.mkdir(parents=True, exist_ok=True)
 
     if args.stop:
-        server = pgserver.get_server(str(data_dir), cleanup_mode=None)
+        server = get_server(str(data_dir), cleanup_mode=None)
         server.cleanup()
         print("postgres stopped")
         return 0
 
-    server = pgserver.get_server(str(data_dir), cleanup_mode=None)
+    server = get_server(str(data_dir), cleanup_mode=None)
     uri = server.get_uri()
     (data_dir / ".uri").write_text(uri)
     try:

@@ -11,7 +11,7 @@ from __future__ import annotations
 
 import asyncio
 import datetime as dt
-from typing import Any
+from typing import Any, cast
 
 import pytest
 from pydantic import BaseModel
@@ -42,7 +42,13 @@ from app.domain.enums import (
 from app.domain.incidents import Incident
 from app.domain.tools import ToolResult, ToolSpec
 from app.policy.engine import PolicyEngine
-from app.tools.registry import ToolContext, ToolDefinition, ToolRegistry, build_default_registry
+from app.tools.registry import (
+    ToolContext,
+    ToolDefinition,
+    ToolHandler,
+    ToolRegistry,
+    build_default_registry,
+)
 
 pytestmark = [pytest.mark.story("OPS-062"), pytest.mark.unit]
 
@@ -102,7 +108,7 @@ def probe_definition(
             idempotent=idempotent,
         ),
         params_model=ProbeParams,
-        handler=probe,
+        handler=cast(ToolHandler, probe),
     )
 
 
@@ -276,7 +282,7 @@ def make_gates(fast_settings: Settings) -> Any:
 
 @pytest.fixture
 def gates(make_gates: Any, registry: ToolRegistry) -> dict[str, Any]:
-    return make_gates(registry)
+    return cast(dict[str, Any], make_gates(registry))
 
 
 @pytest.fixture
@@ -313,7 +319,8 @@ def request(tool_name: str = ROLLBACK, **params: Any) -> ActionRequest:
 
 
 def prepared_action(gates: dict[str, Any]) -> Action:
-    action = next(iter(gates["actions"].rows.values()), None)
+    rows: dict[str, Action] = gates["actions"].rows
+    action = next(iter(rows.values()), None)
     assert action is not None, "prepare() must have persisted an action"
     return action
 

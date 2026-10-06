@@ -6,6 +6,8 @@ assert the *shape* of the boundary, not just its behaviour on one happy path.
 
 from __future__ import annotations
 
+from typing import Any, cast
+
 import pytest
 
 from app.core.errors import ToolNotFound, ValidationFailed
@@ -73,7 +75,7 @@ async def test_invalid_parameters_never_reach_the_handler(settings) -> None:
     """Validation happens before the handler: a malformed call cannot have a side effect."""
     registry = build_default_registry()
     definition = registry.get("deployment.rollback_simulation")
-    context = ToolContext(settings=settings, integrations=object(), actor="test")
+    context = ToolContext(settings=settings, integrations=cast(Any, object()), actor="test")
     with pytest.raises(ValidationFailed) as excinfo:
         await definition.invoke({"target_release": "latest", "reason": "x"}, context)
     assert "errors" in excinfo.value.details
@@ -82,7 +84,7 @@ async def test_invalid_parameters_never_reach_the_handler(settings) -> None:
 async def test_placeholder_release_targets_are_rejected(settings) -> None:
     registry = build_default_registry()
     definition = registry.get("deployment.rollback_simulation")
-    context = ToolContext(settings=settings, integrations=object(), actor="test")
+    context = ToolContext(settings=settings, integrations=cast(Any, object()), actor="test")
     for bad in ("release-0", "release-latest", "main"):
         with pytest.raises(ValidationFailed):
             await definition.invoke(
@@ -97,7 +99,11 @@ def test_tools_cannot_accept_arbitrary_fields(settings) -> None:
     from app.tools.schemas import SlackNotifyParams
 
     with pytest.raises(ValidationError):
-        SlackNotifyParams(text="x", incident_id="INC-1", shell_command="id")
+        # Built from a mapping so the *unknown* field is a runtime validation error rather
+        # than a type error in the test itself — that is the behaviour under test.
+        SlackNotifyParams.model_validate(
+            {"text": "x", "incident_id": "INC-1", "shell_command": "id"}
+        )
 
 
 def _counter_values(counter) -> dict[tuple[str, ...], float]:

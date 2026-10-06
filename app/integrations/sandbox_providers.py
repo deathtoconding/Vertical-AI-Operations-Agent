@@ -13,6 +13,7 @@ from datetime import UTC, datetime, timedelta
 from typing import Any
 
 from app.core.telemetry import INTEGRATION_LATENCY, INTEGRATION_REQUESTS
+from app.integrations.notifications import build_slack_message
 from app.sandbox.simulator import SERVICE, SandboxState
 
 
@@ -196,7 +197,11 @@ class SandboxJiraProvider:
         if issue is None:
             from app.core.errors import IntegrationBadResponse
 
-            raise IntegrationBadResponse("jira", f"issue {issue_key} does not exist")
+            raise IntegrationBadResponse(
+                "jira",
+                f"issue {issue_key} does not exist",
+                details={"issue_key": issue_key, "not_found": True},
+            )
         return {**issue, "simulated": True}
 
     async def add_comment(self, issue_key: str, body: str) -> dict[str, Any]:
@@ -204,7 +209,11 @@ class SandboxJiraProvider:
         if issue is None:
             from app.core.errors import IntegrationBadResponse
 
-            raise IntegrationBadResponse("jira", f"issue {issue_key} does not exist")
+            raise IntegrationBadResponse(
+                "jira",
+                f"issue {issue_key} does not exist",
+                details={"issue_key": issue_key, "not_found": True},
+            )
         comments = issue.setdefault("comments", [])
         comments.append({"body": body, "created_at": datetime.now(UTC).isoformat()})
         return {"issue_key": issue_key, "comment_count": len(comments), "simulated": True}
@@ -225,22 +234,12 @@ class SandboxSlackProvider:
         digest = hashlib.sha256(
             f"{payload.get('incident_id')}|{payload.get('text')}".encode()
         ).hexdigest()[:10]
+        body = build_slack_message(payload, default_channel=self.default_channel)
         message = {
             "message_ts": f"{digest}",
-            "channel": payload.get("channel") or self.default_channel,
-            "text": payload.get("text", ""),
-            "blocks": [
-                {
-                    "type": "section",
-                    "text": {
-                        "type": "mrkdwn",
-                        "text": (
-                            f"*{payload.get('severity', 'SEV3')}* — incident "
-                            f"`{payload.get('incident_id')}`\n{payload.get('text', '')}"
-                        ),
-                    },
-                }
-            ],
+            "channel": body["channel"],
+            "text": body["text"],
+            "blocks": body["blocks"],
             "sent_at": datetime.now(UTC).isoformat(),
             "simulated": True,
         }

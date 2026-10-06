@@ -23,12 +23,13 @@ from typing import Any
 
 import pytest
 import pytest_asyncio
+from pydantic import SecretStr
 
 REPO_ROOT = pathlib.Path(__file__).resolve().parents[1]
 if str(REPO_ROOT) not in sys.path:  # pragma: no cover - import bootstrap
     sys.path.insert(0, str(REPO_ROOT))
 
-from app.core.config import Settings  # noqa: E402
+from app.core.config import Environment, IntegrationsMode, Settings  # noqa: E402
 from app.core.telemetry import reset_for_tests  # noqa: E402
 
 DEV_TOKENS = (
@@ -46,21 +47,31 @@ def _clean_metrics() -> Iterator[None]:
 
 
 @pytest.fixture
-def settings() -> Settings:
-    """Settings for a sandbox-mode unit test. Secrets are placeholders by construction."""
+def _base_settings() -> Settings:
+    """Settings for a sandbox-mode test. Secrets are placeholders by construction.
+
+    Kept separate from :func:`settings` so a test module can override ``settings`` (and thereby
+    the application the shared ``api`` fixture builds) while deriving from the same baseline.
+    """
     return Settings(
-        env="test",
+        env=Environment.TEST,
         log_level="WARNING",
         api_tokens=DEV_TOKENS,
-        integrations_mode="sandbox",
+        integrations_mode=IntegrationsMode.SANDBOX,
         database_url=_test_database_url()
         or "postgresql+psycopg://aiops:aiops@localhost:5432/aiops",
-        llm_api_key="",
+        llm_api_key=SecretStr(""),
         tracing_enabled=False,
         rate_limit_requests_per_minute=10_000,
         detection_min_samples=6,
         detection_window_minutes=30,
     )
+
+
+@pytest.fixture
+def settings(_base_settings: Settings) -> Settings:
+    """The settings every suite uses unless a module overrides this fixture."""
+    return _base_settings
 
 
 # --------------------------------------------------------------------------- #

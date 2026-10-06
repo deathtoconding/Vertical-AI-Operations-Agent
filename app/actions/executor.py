@@ -45,6 +45,7 @@ from app.core.telemetry import (
     TOOL_LATENCY,
     UNSAFE_ACTION_ATTEMPTS,
 )
+from app.core.tracing import span
 from app.domain.actions import (
     Action,
     ActionRequest,
@@ -395,7 +396,22 @@ class ActionExecutor:
         result: ToolResult
         attempts = 0
         try:
-            result, attempts = await self._invoke_with_retries(definition, action.params, context)
+            # The invocation is the one step a human most wants to see in the trace: which tool,
+            # at what risk, and whether it really ran.
+            with span(
+                "tool.invoke",
+                incident_id=action.incident_id,
+                run_id=action.run_id,
+                tool_name=action.tool_name,
+                risk_level=action.risk.value,
+            ) as current:
+                result, attempts = await self._invoke_with_retries(
+                    definition, action.params, context
+                )
+                current.set_attribute(
+                    "tool.outcome",
+                    "SIMULATED" if result.simulated else result.outcome.value,
+                )
         except ValidationFailed as exc:
             await self._record_invocation(
                 action, actor, ToolOutcome.INVALID_INPUT, started, error=str(exc)

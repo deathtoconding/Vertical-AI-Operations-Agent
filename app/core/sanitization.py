@@ -156,7 +156,7 @@ def detect_injection(text: str) -> tuple[str, ...]:
 
 
 def sanitize_untrusted(
-    text: str,
+    text: str | None,
     *,
     source: str,
     max_chars: int = MAX_UNTRUSTED_CHARS,
@@ -166,7 +166,8 @@ def sanitize_untrusted(
     """Sanitise a single untrusted payload and record what was found.
 
     Args:
-        text: raw content from an external system.
+        text: raw content from an external system. ``None`` is accepted deliberately: an
+            adapter that hands back nothing must degrade to "no content", not to a crash.
         source: evidence source name, used as a metric label and in the audit trail.
         max_chars: hard cap after normalisation.
         max_lines: hard cap on lines, applied before the character cap.
@@ -242,10 +243,23 @@ def sanitize_for_external(text: str, *, max_chars: int = 1200) -> str:
     cleaned, _ = normalise_text(text)
     cleaned = re.sub(r"<!(channel|here|everyone)>", r"[mention:\1]", cleaned, flags=re.I)
     cleaned = re.sub(r"<@[A-Z0-9]+>", "[mention]", cleaned)
+    # Plain-text "@here" is not a Slack ping, but the same string travels into Jira descriptions
+    # and email, where it is one. Defanging it costs nothing and removes a whole class of
+    # notification-abuse from untrusted evidence.
+    cleaned = re.sub(r"@(here|channel|everyone)\b", r"[mention:\1]", cleaned, flags=re.I)
     cleaned = re.sub(r"<https?://[^|>]+\|([^>]+)>", r"\1", cleaned)
-    cleaned = re.sub(r"\[([^\]]+)\]\((?:javascript|data):[^)]*\)", r"\1", cleaned, flags=re.I)
+    # ``[click](javascript:alert(1))`` must reduce to ``click`` with no residue: the earlier
+    # pattern stopped at the first ``)`` and left the rest of the payload in the text.
+    cleaned = re.sub(
+        r"\[([^\]]+)\]\((?:javascript|data):[^\s)]*\)*\)?",
+        r"\1",
+        cleaned,
+        flags=re.I,
+    )
     if len(cleaned) > max_chars:
-        cleaned = cleaned[:max_chars] + "…"
+        # The ellipsis is part of the budget: a "bounded" field that returns max_chars + 1
+        # characters would be rejected by the schema on the very next hop.
+        cleaned = cleaned[: max(0, max_chars - 1)] + "…"
     return cleaned
 
 

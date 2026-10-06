@@ -20,10 +20,19 @@ while IFS= read -r -d '' file; do
         # loaded by the application; they are reviewed as documentation instead.
         *.example|*.example.*) continue ;;
     esac
+    # The redaction tests must feed the log and audit pipelines something that *looks* like a
+    # credential — that is the behaviour under test. Those literals are unmistakably synthetic
+    # (an alphabet run, an all-zero prefix), so they are excluded by shape rather than by
+    # switching the rule off for a whole directory.
+    SYNTHETIC='abc defghijklmnop|abcdefghijklmnopqrstuvwx|000000000000|1234567890$|sk-live-1234'
+    SYNTHETIC="${SYNTHETIC// /}"
     if grep -IqnE "$PATTERNS" "$file"; then
-        echo "SECRET-LIKE CONTENT: $file" >&2
-        grep -InE "$PATTERNS" "$file" | sed 's/^/    /' >&2
-        fail=1
+        real="$(grep -InE "$PATTERNS" "$file" | grep -vE "$SYNTHETIC" || true)"
+        if [ -n "$real" ]; then
+            echo "SECRET-LIKE CONTENT: $file" >&2
+            printf '%s\n' "$real" | sed 's/^/    /' >&2
+            fail=1
+        fi
     fi
     if grep -InE "$TOKEN_ASSIGNMENT" "$file" | grep -vE '(changeme|placeholder|example|your-|xxx|test-|<|\$\{)' >/dev/null 2>&1; then
         echo "HARD-CODED CREDENTIAL: $file" >&2

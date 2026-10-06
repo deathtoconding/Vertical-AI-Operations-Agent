@@ -38,8 +38,13 @@ async def list_approvals(
 ) -> dict[str, Any]:
     actor.require(Permission.INCIDENTS_READ)
     approvals = await services.approvals.list_pending(limit=limit) if pending_only else []
-    return {
-        "approvals": [
+
+    serialised: list[dict[str, Any]] = []
+    for item in approvals:
+        # One lookup per approval, not two: the same read answers both the risk and the tool
+        # name, and an action row cannot change between the two calls.
+        action = await services.actions.get(item.action_id)
+        serialised.append(
             {
                 "id": item.id,
                 "action_id": item.action_id,
@@ -49,21 +54,11 @@ async def list_approvals(
                 "requested_at": item.requested_at.isoformat(),
                 "expires_at": item.expires_at.isoformat(),
                 "expired": item.is_expired,
-                "risk": (
-                    (await services.actions.get(item.action_id)).risk.value
-                    if await services.actions.get(item.action_id)
-                    else None
-                ),
-                "tool_name": (
-                    (await services.actions.get(item.action_id)).tool_name
-                    if await services.actions.get(item.action_id)
-                    else None
-                ),
+                "risk": action.risk.value if action else None,
+                "tool_name": action.tool_name if action else None,
             }
-            for item in approvals
-        ],
-        "count": len(approvals),
-    }
+        )
+    return {"approvals": serialised, "count": len(serialised)}
 
 
 @router.get("/{approval_id}")

@@ -7,9 +7,12 @@ confidence — rather than a stub that fakes success).
 
 from __future__ import annotations
 
-import pytest
+from typing import Any
 
-from app.core.config import Settings
+import pytest
+from pydantic import SecretStr
+
+from app.core.config import Environment, Settings
 from app.core.errors import LLMUnavailable
 from app.llm.prompts import PromptNotFound, available_prompts, load_prompt, prompt_version
 from app.llm.provider import (
@@ -22,7 +25,7 @@ from app.llm.provider import (
 pytestmark = [pytest.mark.story("OPS-041"), pytest.mark.unit]
 
 
-def request_with(evidence: list[dict], incident_id: str = "INC-1") -> ReasoningRequest:
+def request_with(evidence: list[dict[str, Any]], incident_id: str = "INC-1") -> ReasoningRequest:
     return ReasoningRequest(
         incident_id=incident_id,
         system_prompt=load_prompt("investigation"),
@@ -101,10 +104,10 @@ def test_prompt_version_is_derived_from_content() -> None:
 
 
 def test_reasoner_selection_follows_configuration() -> None:
-    offline = Settings(env="test", llm_api_key="")
+    offline = Settings(env=Environment.TEST, llm_api_key=SecretStr(""))
     assert isinstance(build_reasoner(offline), DeterministicReasoner)
 
-    configured = Settings(env="test", llm_api_key="sk-placeholder")
+    configured = Settings(env=Environment.TEST, llm_api_key=SecretStr("sk-placeholder"))
     reasoner = build_reasoner(configured)
     assert isinstance(reasoner, OpenAICompatibleReasoner)
     assert reasoner.name == "llm"
@@ -167,7 +170,9 @@ async def test_deterministic_reasoner_states_uncertainty_with_thin_evidence() ->
 
 async def test_llm_client_reports_unavailability_instead_of_fabricating(settings: Settings) -> None:
     """With no API key the client must raise a typed failure — never invent a diagnosis."""
-    offline = Settings(env="test", llm_base_url="https://llm.invalid/v1", llm_api_key="")
+    offline = Settings(
+        env=Environment.TEST, llm_base_url="https://llm.invalid/v1", llm_api_key=SecretStr("")
+    )
     client = OpenAICompatibleReasoner(offline)
     with pytest.raises(LLMUnavailable):
         await client.diagnose(request_with(EVIDENCE))

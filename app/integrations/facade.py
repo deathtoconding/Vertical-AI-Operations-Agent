@@ -12,12 +12,21 @@ Why a facade rather than injecting six clients everywhere:
 
 from __future__ import annotations
 
-from typing import Any
+from typing import Any, NoReturn
 
 from app.core.config import IntegrationsMode, Settings
 from app.core.errors import IntegrationUnavailable
 from app.core.logging import get_logger
 from app.integrations.live import build_live_clients
+from app.integrations.protocols import (
+    DeploymentProvider,
+    GitHubProvider,
+    JiraProvider,
+    LogsProvider,
+    MetricsProvider,
+    PaymentsProvider,
+    SlackProvider,
+)
 from app.integrations.sandbox_providers import (
     SandboxDeploymentProvider,
     SandboxGitHubProvider,
@@ -43,7 +52,7 @@ class _UnavailableProvider:
     def __init__(self, system: str) -> None:
         self.system = system
 
-    def _fail(self) -> None:
+    def _fail(self) -> NoReturn:
         raise IntegrationUnavailable(
             self.system,
             f"Integration '{self.system}' is not configured (AIOPS_INTEGRATIONS_MODE=live).",
@@ -108,22 +117,27 @@ class IntegrationFacade:
         self.sandbox = sandbox or get_sandbox()
         self._live: dict[str, Any] = {}
 
+        # Providers are annotated with their protocol, not ``Any``: the facade is the narrow
+        # surface the tools see, so a provider that drifts from its contract must be a type
+        # error here rather than a surprise at 03:00.
         if self.mode is IntegrationsMode.SANDBOX:
-            self.metrics: Any = SandboxMetricsProvider(self.sandbox, service)
-            self.logs: Any = SandboxLogsProvider(self.sandbox, service)
-            self.github: Any = SandboxGitHubProvider(self.sandbox, settings.github_repository)
-            self.jira: Any = SandboxJiraProvider(self.sandbox, settings.jira_project_key)
-            self.slack: Any = SandboxSlackProvider(self.sandbox, settings.slack_channel)
-            self.payments: Any = SandboxPaymentsProvider(self.sandbox)
-            self.deployment: Any = SandboxDeploymentProvider(self.sandbox)
+            self.metrics: MetricsProvider = SandboxMetricsProvider(self.sandbox, service)
+            self.logs: LogsProvider = SandboxLogsProvider(self.sandbox, service)
+            self.github: GitHubProvider = SandboxGitHubProvider(
+                self.sandbox, settings.github_repository
+            )
+            self.jira: JiraProvider = SandboxJiraProvider(self.sandbox, settings.jira_project_key)
+            self.slack: SlackProvider = SandboxSlackProvider(self.sandbox, settings.slack_channel)
+            self.payments: PaymentsProvider = SandboxPaymentsProvider(self.sandbox)
+            self.deployment: DeploymentProvider = SandboxDeploymentProvider(self.sandbox)
         else:
             self._live = build_live_clients(settings)
-            self.metrics = self._live.get("metrics", _UnavailableProvider("metrics"))
-            self.logs = self._live.get("logs", _UnavailableProvider("logs"))
-            self.github = self._live.get("github", _UnavailableProvider("github"))
-            self.jira = self._live.get("jira", _UnavailableProvider("jira"))
-            self.slack = self._live.get("slack", _UnavailableProvider("slack"))
-            self.payments = self._live.get("payments", _UnavailableProvider("payments"))
+            self.metrics = self._live.get("metrics") or _UnavailableProvider("metrics")
+            self.logs = self._live.get("logs") or _UnavailableProvider("logs")
+            self.github = self._live.get("github") or _UnavailableProvider("github")
+            self.jira = self._live.get("jira") or _UnavailableProvider("jira")
+            self.slack = self._live.get("slack") or _UnavailableProvider("slack")
+            self.payments = self._live.get("payments") or _UnavailableProvider("payments")
             self.deployment = _UnavailableProvider("deployment")
             missing = sorted(
                 system

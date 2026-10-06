@@ -94,8 +94,13 @@ class ResilientHttpClient:
         params: dict[str, Any] | None = None,
         idempotent: bool = True,
         expect_json: bool = True,
-    ) -> dict[str, Any]:
-        """Perform a request, retrying only when it is safe and useful to do so."""
+    ) -> Any:
+        """Perform a request, retrying only when it is safe and useful to do so.
+
+        Returns whatever JSON the endpoint answered with: a mapping for most APIs, a list for
+        the GitHub collection endpoints. Callers narrow it, rather than the client pretending
+        every endpoint returns an object.
+        """
         url = path if path.startswith("http") else f"{self.base_url}{path}"
         should_retry = idempotent and method.upper() in {"GET", "HEAD", "PUT", "DELETE", "POST"}
         attempts = self.max_retries + 1 if should_retry else 1
@@ -183,10 +188,10 @@ class ResilientHttpClient:
             details={"attempts": attempts},
         )
 
-    async def get(self, path: str, **kwargs: Any) -> dict[str, Any]:
+    async def get(self, path: str, **kwargs: Any) -> Any:
         return await self.request("GET", path, **kwargs)
 
-    async def post(self, path: str, **kwargs: Any) -> dict[str, Any]:
+    async def post(self, path: str, **kwargs: Any) -> Any:
         return await self.request("POST", path, **kwargs)
 
     # -- helpers ------------------------------------------------------------ #

@@ -56,6 +56,11 @@ class ExpectedState(DomainModel):
     window_minutes: int | None = None
     service: str | None = None
     description: str = ""
+    #: Names an artefact created *by* execution, when the check needs to know which one to look at.
+    #: The rule for resolving it is declared here, before the action runs; the value is execution
+    #: data, not a pass criterion. The only supported rule is ``action.external_id`` — the id the
+    #: tool reported for the thing it created (a Jira issue key, a message timestamp).
+    reference: str | None = None
 
     @property
     def is_empty(self) -> bool:

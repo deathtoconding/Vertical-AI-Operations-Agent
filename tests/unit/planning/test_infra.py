@@ -21,7 +21,7 @@ import re
 import stat
 import subprocess
 import tomllib
-from typing import Any
+from typing import Any, cast
 
 import pytest
 import yaml
@@ -43,7 +43,7 @@ def dockerfile() -> str:
 
 @pytest.fixture(scope="module")
 def compose() -> dict[str, Any]:
-    return yaml.safe_load(COMPOSE.read_text(encoding="utf-8"))
+    return cast(dict[str, Any], yaml.safe_load(COMPOSE.read_text(encoding="utf-8")))
 
 
 def _directives(text: str) -> list[str]:

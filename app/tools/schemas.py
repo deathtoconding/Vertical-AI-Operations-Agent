@@ -62,6 +62,7 @@ class SlackNotifyParams(ToolParams):
     severity: str = Field(default="SEV3", pattern=r"^SEV[1-4]$")
     channel: str | None = Field(default=None, max_length=80, pattern=r"^#[a-z0-9-_]+$")
     action_url: str | None = Field(default=None, max_length=500)
+    evidence_count: int | None = Field(default=None, ge=0, le=100_000)
 
 
 class DeploymentRollbackParams(ToolParams):

@@ -29,7 +29,7 @@ idempotently, and verifies the outcome independently of the executor.
 - Anomaly detection that is statistical, not model-based: robust-z baselines with a minimum
   sample size and a relative-deviation guard, plus an explicit `insufficient_data` verdict instead
   of a false anomaly (`OPS-030`).
-- Incident creation with a dedup window and an anomaly row linked to each incident (`OPS-031`).
+- Incident creation with a dedup window and an anomaly row linked to each incident (`OPS-031`). Deduplication applies to *open* incidents only: once an incident is resolved or escalated, the same deviation recurring opens a new incident (with a derived dedup key), because a fix that did not hold must not be hidden by the window that suppressed the original alert.
 
 **Investigation**
 

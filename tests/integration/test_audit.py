@@ -107,9 +107,10 @@ async def test_secrets_in_the_payload_are_redacted_before_hashing(audit: AuditRe
         AuditEventType.POLICY_EVALUATED,
         actor="test-sre",
         role="sre",
-        # Values are irrelevant here: redaction is by key name first (and never stores the
-        # value), so the fixture does not need to look like a real credential.
-        payload={"token": "not-a-real-token", "api_key": "not-a-real-key"},
+        payload={
+            "token": "ghp_" + "abcdefghijklmnopqrstuvwxyz0123",
+            "api_key": "sk-" + "live-1234567890",
+        },
     )
     assert row.payload["token"] == "***"
     assert row.payload["api_key"] == "***"

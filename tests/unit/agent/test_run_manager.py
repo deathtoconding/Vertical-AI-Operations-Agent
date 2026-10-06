@@ -118,7 +118,7 @@ class FakeRunRepository:
         if run is None:
             return None
         holder = self.lease_holders.get(run_id)
-        # A competing worker claimed it within the lease window, so the claim is refused.
+        # A competing worker claimed it, and the request's lease would not outlive that claim.
         if (
             holder is not None
             and holder > NOW

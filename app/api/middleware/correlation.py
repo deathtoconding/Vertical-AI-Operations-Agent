@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import time
 import uuid
-from typing import Any
+from typing import Any, cast
 
 from starlette.middleware.base import BaseHTTPMiddleware
 from starlette.requests import Request
@@ -30,7 +30,7 @@ class CorrelationMiddleware(BaseHTTPMiddleware):
         trace_id: str | None = None
         status_code = 500
         try:
-            response = await call_next(request)
+            response = cast(Response, await call_next(request))
             status_code = response.status_code
         finally:
             elapsed = time.perf_counter() - started

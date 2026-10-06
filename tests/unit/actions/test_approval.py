@@ -8,6 +8,7 @@ expired approval, a rejection, and a pending request that was never decided.
 from __future__ import annotations
 
 import datetime as dt
+from typing import Any
 
 import pytest
 
@@ -22,7 +23,9 @@ PARAMS = {"target_release": "release-41", "reason": "error spike after release-4
 
 
 def action(**overrides: object) -> Action:
-    params = dict(overrides.pop("params", PARAMS))  # type: ignore[arg-type]
+    raw_params = overrides.pop("params", PARAMS)
+    assert isinstance(raw_params, dict)
+    params: dict[str, Any] = {str(key): value for key, value in raw_params.items()}
     tool_name = str(overrides.pop("tool_name", "deployment.rollback_simulation"))
     values: dict[str, object] = {
         "id": "ACT-1",
@@ -72,8 +75,9 @@ def test_request_is_bound_to_the_action_payload_and_expires() -> None:
     assert request.values["decision"] == ApprovalDecision.PENDING.value
     assert request.payload_hash == action().canonical_hash
     expires_at = request.values["expires_at"]
-    assert isinstance(expires_at, dt.datetime)
-    assert (expires_at - request.values["requested_at"]).total_seconds() == pytest.approx(900)
+    requested_at = request.values["requested_at"]
+    assert isinstance(expires_at, dt.datetime) and isinstance(requested_at, dt.datetime)
+    assert (expires_at - requested_at).total_seconds() == pytest.approx(900)
 
 
 def test_parameter_order_does_not_change_the_binding() -> None:

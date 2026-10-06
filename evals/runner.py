@@ -31,7 +31,9 @@ REPO_ROOT = Path(__file__).resolve().parents[1]
 if str(REPO_ROOT) not in sys.path:  # pragma: no cover - import bootstrap
     sys.path.insert(0, str(REPO_ROOT))
 
-from app.core.config import Settings  # noqa: E402
+from pydantic import SecretStr  # noqa: E402
+
+from app.core.config import Environment, IntegrationsMode, Settings  # noqa: E402
 from app.evaluation.harness import Harness  # noqa: E402
 from app.evaluation.schemas import DIMENSIONS, EvalReport, load_dataset  # noqa: E402
 
@@ -72,10 +74,10 @@ def build_settings(mode: str, *, allow_live: bool) -> Settings:
 
     api_key = os.environ.get("AIOPS_LLM_API_KEY", "") if allow_live else ""
     return Settings(
-        env="test",
+        env=Environment.TEST,
         log_level="WARNING",
-        integrations_mode="sandbox",
-        llm_api_key=api_key,
+        integrations_mode=IntegrationsMode.SANDBOX,
+        llm_api_key=SecretStr(api_key),
         tracing_enabled=False,
         rate_limit_requests_per_minute=100_000,
         detection_min_samples=6,

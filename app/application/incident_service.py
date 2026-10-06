@@ -66,7 +66,11 @@ class IncidentService:
         ``incident`` is the incident this detection belongs to (new or existing); ``created``
         says whether it was created here. The detection event is persisted either way.
         """
-        existing = await self.incidents.get_by_dedup_key(self.dedup_key_for(detection))
+        base_key = self.dedup_key_for(detection)
+        # Only an incident that is still being worked on counts as "already known" (see
+        # ``get_active_by_dedup_key``): a recurrence after resolution is a new incident, because
+        # otherwise a failed fix would stay invisible for the rest of the dedup window.
+        existing = await self.incidents.get_active_by_dedup_key(base_key)
         values, is_duplicate = build_incident_from_detection(
             detection,
             dedup_window_minutes=self.settings.detection_dedup_window_minutes,
@@ -93,7 +97,13 @@ class IncidentService:
             incident = existing
             created = False
         else:
-            incident = await self.incidents.create({**values, "id": new_prefixed_id("INC")})
+            incident_id = new_prefixed_id("INC")
+            if await self.incidents.get_by_dedup_key(base_key) is not None:
+                # A finished incident still owns this bucket key. The new one gets a derived key
+                # (the prefix is what lookups match on), so both rows stay unique and the next
+                # detection still finds the active incident.
+                values["dedup_key"] = f"{base_key}:{incident_id[-10:]}"
+            incident = await self.incidents.create({**values, "id": incident_id})
             created = True
             INCIDENTS_CREATED.labels(
                 severity=incident.severity.value, incident_type=incident.incident_type.value

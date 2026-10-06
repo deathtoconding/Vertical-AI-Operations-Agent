@@ -14,7 +14,8 @@ Conventions every check obeys:
 
 from __future__ import annotations
 
-from typing import Any
+from collections.abc import Awaitable
+from typing import Any, Protocol
 
 from app.core.config import Settings
 from app.core.errors import IntegrationError
@@ -204,15 +205,35 @@ async def check_issue_exists(
             reason="no issue key was recorded, so the issue cannot be confirmed",
             source="jira",
         )
-    payload = await integrations.jira.get_issue(str(key))
-    found = bool(payload.get("key"))
+    try:
+        payload = await integrations.jira.get_issue(str(key))
+    except IntegrationError as exc:
+        # "The issue does not exist" is a definitive negative, not an unreadable source: a ticket
+        # that was never created must FAIL verification and escalate, not hide behind UNKNOWN.
+        missing = bool(exc.details.get("not_found")) or exc.details.get("status_code") == 404
+        if not missing:
+            raise
+        return CheckResult(
+            check="issue_exists",
+            outcome=VerificationOutcome.FAILED,
+            observed={"key": key, "found": False},
+            expected={"key": str(key)},
+            source="jira",
+            reason=f"issue {key} does not exist in the tracker",
+        )
+    found_key = str(payload.get("issue_key") or payload.get("key") or "")
+    found = found_key == str(key)
     return CheckResult(
         check="issue_exists",
         outcome=VerificationOutcome.SUCCESS if found else VerificationOutcome.FAILED,
-        observed={"key": key, "found": found},
+        observed={"key": key, "found_key": found_key},
         expected={"key": str(key)},
         source="jira",
-        reason=f"issue {key} exists" if found else f"issue {key} was not found",
+        reason=(
+            f"issue {key} exists"
+            if found
+            else f"the tracker answered for {found_key or 'no issue'}, not for {key}"
+        ),
     )
 
 
@@ -238,9 +259,20 @@ async def check_tool_effect_recorded(
     )
 
 
-#: Check name -> implementation. The engine dispatches through this map, so an unknown check #: is
-#: reported as inconclusive rather than silently skipped.
-CHECKS: dict[str, Any] = {
+#: Check name -> implementation. The engine dispatches through this map, so an unknown check is
+#: reported as inconclusive rather than silently skipped. A Protocol (rather than a plain
+#: Callable) because the implementations take keyword-only ``settings``.
+class CheckHandler(Protocol):
+    def __call__(
+        self,
+        integrations: Any,
+        expected: dict[str, Any],
+        *,
+        settings: Settings,
+    ) -> Awaitable[CheckResult]: ...
+
+
+CHECKS: dict[str, CheckHandler] = {
     "metric_recovered": check_metric_recovered,
     "release_active": check_release_active,
     "deployment_healthy": check_deployment_healthy,

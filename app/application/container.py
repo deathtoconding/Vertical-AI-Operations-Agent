@@ -71,7 +71,7 @@ class Services:
     idempotency: IdempotencyStore
     #: Back-reference so an API route can build a use case without a second dependency. The
     #: container holds no request-scoped state, so sharing it across requests is safe.
-    container: Any = None
+    container: Container
 
 
 @dataclass

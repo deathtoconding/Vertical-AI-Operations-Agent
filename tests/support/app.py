@@ -8,7 +8,6 @@ does, and the socket variant exists because the release scripts are HTTP clients
 
 from __future__ import annotations
 
-import asyncio
 import contextlib
 import socket
 import threading
@@ -86,15 +85,10 @@ def start_server(settings: Settings) -> SimpleNamespace:
 
 
 def stop_server(handle: SimpleNamespace) -> None:
+    """Ask uvicorn to exit and wait for its thread, so no request outlives the test."""
     handle.server.should_exit = True
     handle.thread.join(timeout=15)
-    with contextlib.suppress(Exception):
-        asyncio.run(_tick())
     assert not handle.thread.is_alive(), "the test server did not shut down"
-
-
-async def _tick() -> None:
-    await asyncio.sleep(0)
 
 
 @contextlib.contextmanager

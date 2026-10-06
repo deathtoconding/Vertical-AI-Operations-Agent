@@ -9,6 +9,8 @@ record the degradation, keep the rest, and label the untrusted content.
 from __future__ import annotations
 
 import datetime as dt
+from collections.abc import Iterator
+from typing import Any
 
 import pytest
 
@@ -32,7 +34,7 @@ NOW = dt.datetime(2026, 10, 6, 12, 0, tzinfo=dt.UTC)
 
 
 @pytest.fixture(autouse=True)
-def _sandbox_scenario_a():
+def _sandbox_scenario_a() -> Iterator[None]:
     """Every test starts from the same simulated fault and leaves the sandbox clean."""
     sandbox = get_sandbox()
     sandbox.reset(scenario="A")
@@ -50,7 +52,9 @@ def collector(settings: Settings, integrations: IntegrationFacade) -> EvidenceCo
     return EvidenceCollector(settings, integrations)
 
 
-def incident(incident_type: IncidentType = IncidentType.API_ERROR_SPIKE, **overrides: object):
+def incident(
+    incident_type: IncidentType = IncidentType.API_ERROR_SPIKE, **overrides: object
+) -> Incident:
     values: dict[str, object] = {
         "id": "INC-COLLECT-1",
         "incident_type": incident_type,
@@ -159,7 +163,7 @@ async def test_partial_metric_failure_keeps_the_series_that_did_arrive(
 ) -> None:
     original = integrations.metrics_window
 
-    async def one_metric_missing(service: str, metric: str, window_minutes: int):
+    async def one_metric_missing(service: str, metric: str, window_minutes: int) -> dict[str, Any]:
         if metric == "latency_p95":
             raise IntegrationUnavailable("metrics", "latency_p95 is not exported")
         return await original(service, metric, window_minutes)
@@ -178,7 +182,7 @@ async def test_partial_metric_failure_keeps_the_series_that_did_arrive(
 async def test_a_metric_provider_that_fails_entirely_degrades_metrics_only(
     collector: EvidenceCollector, integrations: IntegrationFacade
 ) -> None:
-    async def all_metrics_fail(service: str, metric: str, window_minutes: int):
+    async def all_metrics_fail(service: str, metric: str, window_minutes: int) -> dict[str, Any]:
         raise IntegrationUnavailable("metrics", "metrics provider down")
 
     integrations.metrics_window = all_metrics_fail  # type: ignore[method-assign]

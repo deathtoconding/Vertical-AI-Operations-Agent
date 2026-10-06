@@ -295,9 +295,13 @@ async function loadApprovals() {
     const row = el("div", "row");
     const approve = el("button", "primary", "Approve & execute");
     const reject = el("button", "danger", "Reject");
+    const escalate = el("button", "secondary", "Escalate to a human");
     approve.addEventListener("click", () => decide(approval, "APPROVED"));
     reject.addEventListener("click", () => decide(approval, "REJECTED"));
-    row.append(approve, reject);
+    // Escalation is a first-class decision, not a failure to decide: it hands the incident to a
+    // human with the payload hash intact.
+    escalate.addEventListener("click", () => decide(approval, "ESCALATED"));
+    row.append(approve, reject, escalate);
     card.append(row);
     list.append(card);
   }
@@ -310,7 +314,12 @@ async function decide(approval, decision) {
       body: JSON.stringify({
         decision,
         payload_hash: approval.payload_hash,
-        reason: decision === "APPROVED" ? "approved from console" : "rejected from console",
+        reason:
+          decision === "APPROVED"
+            ? "approved from console"
+            : decision === "ESCALATED"
+              ? "escalated from console"
+              : "rejected from console",
       }),
     });
     if (decision === "APPROVED") {

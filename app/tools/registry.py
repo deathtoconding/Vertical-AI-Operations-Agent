@@ -72,7 +72,11 @@ class ToolContext:
     extras: dict[str, Any] = field(default_factory=dict)
 
 
-ToolHandler = Callable[[BaseModel, ToolContext], Awaitable[ToolResult]]
+#: A handler receives its tool's *concrete* params model, which is contravariant to a
+#: ``Callable[[BaseModel, ...]]`` annotation. Parameters are narrowed by the registry
+#: (``ToolDefinition.invoke`` validates against ``params_model`` before calling), so the alias
+#: is written to match what a handler may actually accept.
+ToolHandler = Callable[[Any, ToolContext], Awaitable[ToolResult]]
 
 
 @dataclass(frozen=True)

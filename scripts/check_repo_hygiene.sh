@@ -34,4 +34,21 @@ if git grep -nE 'TODO: implement|FIXME: placeholder|raise NotImplementedError$' 
   echo "FAIL: placeholder implementation found"; fail=1
 fi
 
+# 6. The ignore rules must not swallow source. An unanchored `logs/` in .gitignore silently
+#    excluded `app/integrations/logs/` from the repository while it still existed in a working
+#    tree: it passed every local test and was missing from every clone and container build.
+#    Anything git does not carry does not ship, so this is checked before anything is committed.
+ignored_sources="$(git check-ignore --stdin < <(find app tests evals scripts -name '*.py'   -not -path '*__pycache__*' | sort) 2>/dev/null || true)"
+if [ -n "$ignored_sources" ]; then
+  echo "FAIL: .gitignore excludes source files, so they would not be shipped:"
+  echo "$ignored_sources"
+  fail=1
+fi
+
+# 7. The documented provider paths must exist (OPS-020…OPS-023). A backlog artefact that is not in
+#    the tree is a plan that has drifted from the code.
+while read -r provider; do
+  [ -e "$provider" ] || { echo "FAIL: documented integration provider is missing: $provider"; fail=1; }
+done < <(grep -rhoE 'app/integrations/[a-z]+/[a-z_]+\.py' docs/planning/domain.md | sort -u)
+
 exit $fail

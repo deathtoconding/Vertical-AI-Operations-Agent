@@ -338,7 +338,7 @@ stories:
     labels: [investigation, llm, safety]
     security: Prompt-injection defences; the LLM produces proposals only and never gains authority.
     observability: llm_latency_seconds, llm_error_rate, diagnosis_grounding_failures_total, token usage.
-    test_approach: tests/unit/investigation (schema + grounding) and tests/security/prompt_injection.
+    test_approach: tests/unit/investigation (schema + grounding) and tests/security/prompt_injection
     implemented_by: [app/investigation/investigator.py, app/llm/provider.py, prompts/investigation/system.md]
 
   # ------------------------------------------------------------------ EPIC-06
@@ -424,7 +424,7 @@ stories:
     labels: [approval, safety]
     security: Approval requires the operator/sre/admin role and is invalidated by payload tampering.
     observability: approvals_requested_total, approvals_granted_total, approval_latency_seconds.
-    test_approach: tests/unit/actions/test_approval.py + tests/security/authorization/test_bypass.py.
+    test_approach: tests/unit/actions/test_approval.py + tests/security/authorization/test_bypass.py
     implemented_by: [app/actions/approval.py, app/api/routes/approvals.py]
 
   - id: OPS-062
@@ -595,7 +595,7 @@ stories:
     labels: [security, api, hardening]
     security: Directly reduces denial-of-service and injection surface of every endpoint.
     observability: rate_limit_rejections_total, validation_rejections_total by route.
-    test_approach: tests/security/test_rate_limit.py and tests/security/test_input_validation.py.
+    test_approach: tests/security/test_rate_limit.py and tests/security/test_input_validation.py
     implemented_by: [app/api/middleware/rate_limit.py, app/domain/schemas.py]
 
   # ------------------------------------------------------------------ EPIC-09

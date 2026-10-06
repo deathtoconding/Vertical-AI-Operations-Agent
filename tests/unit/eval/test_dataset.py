@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import copy
 from pathlib import Path
+from typing import Any, cast
 
 import pytest
 import yaml
@@ -30,8 +31,8 @@ CONFIG_PATH = REPO_ROOT / "evals" / "config.yaml"
 
 
 @pytest.fixture(scope="module")
-def raw() -> dict:
-    return yaml.safe_load(DATASET_PATH.read_text(encoding="utf-8"))
+def raw() -> dict[str, Any]:
+    return cast(dict[str, Any], yaml.safe_load(DATASET_PATH.read_text(encoding="utf-8")))
 
 
 @pytest.fixture(scope="module")
@@ -123,14 +124,14 @@ def test_the_tool_failure_case_expects_a_failed_verification(dataset: EvalDatase
 
 
 def test_runner_config_points_at_a_real_dataset_and_baseline() -> None:
-    config = yaml.safe_load(CONFIG_PATH.read_text(encoding="utf-8"))
+    config = cast(dict[str, Any], yaml.safe_load(CONFIG_PATH.read_text(encoding="utf-8")))
     assert (REPO_ROOT / config["dataset"]["path"]).exists()
     assert (REPO_ROOT / config["regression"]["baseline"]).exists()
     assert set(config["thresholds"]) >= {"overall", "pass_rate", "safety"} | set(DIMENSIONS)
 
 
 def test_thresholds_cannot_be_relaxed_below_the_safety_floor() -> None:
-    config = yaml.safe_load(CONFIG_PATH.read_text(encoding="utf-8"))
+    config = cast(dict[str, Any], yaml.safe_load(CONFIG_PATH.read_text(encoding="utf-8")))
     assert config["thresholds"]["safety"] == 1.0, "safety is a hard gate, not a score"
     assert config["thresholds"]["overall"] >= 0.8
 
@@ -140,21 +141,21 @@ def test_thresholds_cannot_be_relaxed_below_the_safety_floor() -> None:
 # --------------------------------------------------------------------------- #
 
 
-def test_duplicate_case_ids_are_rejected(raw: dict) -> None:
+def test_duplicate_case_ids_are_rejected(raw: dict[str, Any]) -> None:
     document = copy.deepcopy(raw)
     document["cases"].append(copy.deepcopy(document["cases"][0]))
     with pytest.raises(ValueError, match="duplicate case ids"):
         EvalDataset.model_validate(document)
 
 
-def test_unknown_category_is_rejected(raw: dict) -> None:
+def test_unknown_category_is_rejected(raw: dict[str, Any]) -> None:
     document = copy.deepcopy(raw)
     document["cases"][0]["category"] = "looks_fine"
     with pytest.raises(ValueError, match="unknown category"):
         EvalDataset.model_validate(document)
 
 
-def test_missing_category_coverage_is_rejected(raw: dict) -> None:
+def test_missing_category_coverage_is_rejected(raw: dict[str, Any]) -> None:
     document = copy.deepcopy(raw)
     document["cases"] = [case for case in document["cases"] if case["category"] != "tool_failure"]
     document["cases"].append(
@@ -180,7 +181,7 @@ def test_a_non_mapping_document_is_rejected(tmp_path: Path) -> None:
         load_dataset(path)
 
 
-def test_too_confident_ceiling_is_rejected(raw: dict) -> None:
+def test_too_confident_ceiling_is_rejected(raw: dict[str, Any]) -> None:
     document = copy.deepcopy(raw)
     document["cases"][0]["expected"]["detection"] = "anomaly"
     document["cases"][0]["expected"]["confidence_ceiling"] = 1.5
