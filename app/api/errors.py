@@ -49,7 +49,9 @@ STATUS_BY_ERROR: dict[type[Exception], int] = {
     ApprovalRequired: status.HTTP_409_CONFLICT,
     IdempotencyConflict: status.HTTP_409_CONFLICT,
     InvalidTransition: status.HTTP_409_CONFLICT,
-    ValidationFailed: status.HTTP_422_UNPROCESSABLE_ENTITY,
+    # `HTTP_422_UNPROCESSABLE_CONTENT` is the current name; the starlette constant it replaces
+    # is deprecated and would trip the warnings-as-errors filter.
+    ValidationFailed: status.HTTP_422_UNPROCESSABLE_CONTENT,
     RateLimitedError: status.HTTP_429_TOO_MANY_REQUESTS,
     DependencyUnavailable: status.HTTP_503_SERVICE_UNAVAILABLE,
 }
@@ -99,7 +101,7 @@ def install_error_handlers(app: FastAPI) -> None:
     @app.exception_handler(RequestValidationError)
     async def _validation_error(request: Request, exc: RequestValidationError) -> JSONResponse:
         return JSONResponse(
-            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
             content=error_body(
                 "validation_failed",
                 "The request did not match the expected schema.",

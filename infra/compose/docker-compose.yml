@@ -1,0 +1,95 @@
+# DEV-001 — local/staging stack: application + PostgreSQL (+ Prometheus and Grafana for the
+# SLO dashboard in SRE-004). `make up` / `make down`.
+#
+# The application container applies migrations on start (entrypoint.sh), so `make up` gives a
+# working system rather than a container that crashes on a missing table.
+name: aiops
+
+services:
+  postgres:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: aiops
+      POSTGRES_PASSWORD_FILE: /run/secrets/postgres_password
+      POSTGRES_DB: aiops
+    secrets:
+      - postgres_password
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U aiops -d aiops"]
+      interval: 5s
+      timeout: 5s
+      retries: 12
+    ports:
+      - "5432:5432"
+    restart: unless-stopped
+
+  app:
+    build:
+      context: ../..
+      dockerfile: infra/docker/Dockerfile
+    environment:
+      AIOPS_CONFIG_FILE: /app/configs/staging.yaml
+      AIOPS_DATABASE_URL: postgresql+psycopg://aiops:${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD}@postgres:5432/aiops
+      AIOPS_INTEGRATIONS_MODE: sandbox
+      AIOPS_API_TOKENS: ${AIOPS_API_TOKENS:?provide token:role:actor bindings}
+      AIOPS_LLM_BASE_URL: ${AIOPS_LLM_BASE_URL:-}
+      AIOPS_LLM_API_KEY: ${AIOPS_LLM_API_KEY:-}
+      AIOPS_SLACK_WEBHOOK_URL: ${AIOPS_SLACK_WEBHOOK_URL:-}
+      AIOPS_JIRA_URL: ${AIOPS_JIRA_URL:-}
+      AIOPS_JIRA_PROJECT_KEY: ${AIOPS_JIRA_PROJECT_KEY:-OPS}
+    depends_on:
+      postgres:
+        condition: service_healthy
+    ports:
+      - "8000:8000"
+    healthcheck:
+      test: ["CMD", "curl", "-fsS", "http://127.0.0.1:8000/health"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+      start_period: 20s
+    restart: unless-stopped
+
+  prometheus:
+    image: prom/prometheus:v3.1.0
+    command:
+      - --config.file=/etc/prometheus/prometheus.yml
+      - --storage.tsdb.retention.time=15d
+    volumes:
+      - ../deployment/prometheus/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - ../deployment/prometheus/rules.yml:/etc/prometheus/rules.yml:ro
+      - promdata:/prometheus
+    ports:
+      - "9090:9090"
+    depends_on:
+      app:
+        condition: service_started
+    restart: unless-stopped
+
+  grafana:
+    image: grafana/grafana:11.5.0
+    environment:
+      GF_SECURITY_ADMIN_PASSWORD__FILE: /run/secrets/grafana_password
+      GF_USERS_ALLOW_SIGN_UP: "false"
+    secrets:
+      - grafana_password
+    volumes:
+      - ../deployment/grafana/provisioning:/etc/grafana/provisioning:ro
+      - ../deployment/grafana/dashboard.json:/var/lib/grafana/dashboards/aiops.json:ro
+    ports:
+      - "3000:3000"
+    depends_on:
+      - prometheus
+    restart: unless-stopped
+
+volumes:
+  pgdata:
+  promdata:
+
+secrets:
+  postgres_password:
+    file: ./secrets/postgres_password
+  grafana_password:
+    file: ./secrets/grafana_password

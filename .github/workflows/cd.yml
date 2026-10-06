@@ -1,0 +1,112 @@
+name: cd
+
+# DEV-003 — delivery pipeline.
+#
+# Staging deploys automatically from `main`; production requires an explicit approval on the
+# `production` environment (configured in repository settings, documented in
+# docs/planning/release-gates.md). Post-deploy verification runs the same script a human
+# would run, because "we deployed" and "the release works" are different claims.
+on:
+  push:
+    branches: [main]
+    tags: ["v*"]
+  workflow_dispatch:
+    inputs:
+      environment:
+        description: "target environment"
+        type: choice
+        options: [staging, production]
+        default: staging
+
+concurrency:
+  group: cd-${{ github.ref }}
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+  packages: write
+
+jobs:
+  build:
+    name: build immutable artifact
+    runs-on: ubuntu-latest
+    outputs:
+      image: ${{ steps.meta.outputs.image }}
+    steps:
+      - uses: actions/checkout@v5
+      - id: meta
+        run: echo "image=ghcr.io/${{ github.repository }}/aiops-agent:${{ github.sha }}" >> "$GITHUB_OUTPUT"
+      - uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      - name: Build and push (tagged with the commit SHA — never `latest` in an environment)
+        run: |
+          docker build -f infra/docker/Dockerfile -t "${{ steps.meta.outputs.image }}" .
+          docker push "${{ steps.meta.outputs.image }}"
+
+  staging:
+    name: deploy staging + smoke + evaluation
+    runs-on: ubuntu-latest
+    needs: [build]
+    environment:
+      name: staging
+      url: https://staging.example.invalid
+    env:
+      IMAGE: ${{ needs.build.outputs.image }}
+    steps:
+      - uses: actions/checkout@v5
+      - name: Deploy the candidate
+        run: |
+          echo "deploying ${IMAGE} to staging"
+          bash scripts/deploy.sh staging "${IMAGE}"
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.11"
+          cache: pip
+      - run: |
+          python -m pip install --upgrade pip
+          pip install -e ".[dev]"
+      - name: Post-deploy health and readiness
+        run: |
+          python scripts/verify_release.py --base-url "${{ vars.STAGING_BASE_URL }}"
+      - name: Smoke tests against the deployed candidate
+        run: pytest tests/e2e -q -m e2e --base-url "${{ vars.STAGING_BASE_URL }}"
+      - name: AI regression suite against the deployed candidate
+        run: python evals/runner.py --config evals/config.yaml --check-regression
+
+  production:
+    name: deploy production (approval required)
+    runs-on: ubuntu-latest
+    needs: [build, staging]
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main' || inputs.environment == 'production'
+    environment:
+      name: production
+      url: https://ops.example.invalid
+    env:
+      IMAGE: ${{ needs.build.outputs.image }}
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.11"
+          cache: pip
+      - name: Deploy the same artifact that passed staging
+        run: |
+          echo "deploying ${IMAGE} to production"
+          bash scripts/deploy.sh production "${IMAGE}"
+      - run: |
+          python -m pip install --upgrade pip
+          pip install -e ".[dev]"
+      - name: Post-deploy verification (health, readiness, release verification)
+        run: python scripts/verify_release.py --base-url "${{ vars.PRODUCTION_BASE_URL }}" --json release-report.json
+      - name: Rollback drill against the new release (DEV-004)
+        run: python scripts/rollback_drill.py --json rollback-report.json
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: release-evidence
+          path: |
+            release-report.json
+            rollback-report.json

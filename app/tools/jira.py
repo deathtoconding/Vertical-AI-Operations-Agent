@@ -11,6 +11,7 @@ from __future__ import annotations
 from app.core.sanitization import sanitize_for_external
 from app.domain.enums import RiskLevel, ToolOutcome
 from app.domain.tools import ToolResult, ToolSpec
+from app.integrations.idempotency import jira_issue_key
 from app.tools.registry import ToolContext, ToolDefinition
 from app.tools.schemas import JiraCreateIncidentParams
 
@@ -56,7 +57,9 @@ async def _handler(params: JiraCreateIncidentParams, context: ToolContext) -> To
         "labels": params.labels[:10],
         "run_id": context.run_id,
     }
-    key = f"{params.incident_id}:jira.create_incident"
+    # Derived from the payload, not from the attempt: a timeout retry must return the
+    # original issue, and a genuinely different incident payload must create a new one.
+    key = jira_issue_key(params.incident_id, payload)
     data = await context.integrations.jira_create_issue(payload, idempotency_key=key)
     return ToolResult(
         tool_name=SPEC.name,

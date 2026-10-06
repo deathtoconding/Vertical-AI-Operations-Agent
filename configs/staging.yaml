@@ -1,0 +1,20 @@
+# Staging deployment profile (DEV-003).
+#
+# Staging exists to run the same code against reachable-but-harmless systems: live mode is
+# exercised so integration failures surface before production, but every destructive tool is
+# still the labelled simulation, and autonomy is capped at `observe`.
+environment:
+  env: staging
+  log_json: true
+  log_level: INFO
+  integrations_mode: live
+  trust_proxy: true
+  rate_limit_requests_per_minute: 240
+  rate_limit_burst: 60
+  autonomy_level: observe
+  request_timeout_seconds: 10
+  action_timeout_seconds: 30
+  detection_window_minutes: 60
+  detection_dedup_window_minutes: 30
+  max_rollbacks_per_hour: 1
+  cors_origins: https://staging.example.invalid

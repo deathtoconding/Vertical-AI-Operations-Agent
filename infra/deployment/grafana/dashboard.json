@@ -1,0 +1,254 @@
+{
+  "__comment": "SRE-004 — SLO dashboard. Panels map 1:1 to docs/sre/slos.md; every expression uses a metric this repository emits (asserted by tests/unit/planning/test_documentation.py).",
+  "title": "AI Operations Agent — SLOs",
+  "uid": "aiops-slos",
+  "tags": ["aiops", "slo", "agent"],
+  "timezone": "utc",
+  "schemaVersion": 39,
+  "version": 1,
+  "refresh": "30s",
+  "time": { "from": "now-6h", "to": "now" },
+  "templating": {
+    "list": [
+      {
+        "name": "service",
+        "type": "constant",
+        "current": { "value": "aiops-agent", "text": "aiops-agent" }
+      }
+    ]
+  },
+  "panels": [
+    {
+      "type": "row",
+      "title": "Service health",
+      "gridPos": { "h": 1, "w": 24, "x": 0, "y": 0 }
+    },
+    {
+      "type": "timeseries",
+      "title": "Request rate by status",
+      "description": "SLO: API availability >= 99.5% (non-5xx responses / total responses).",
+      "gridPos": { "h": 8, "w": 8, "x": 0, "y": 1 },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "sum(rate(aiops_http_requests_total[5m])) by (status)",
+          "legendFormat": "{{status}}"
+        }
+      ]
+    },
+    {
+      "type": "timeseries",
+      "title": "p95 API latency",
+      "description": "Golden signal: latency.",
+      "gridPos": { "h": 8, "w": 8, "x": 8, "y": 1 },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "histogram_quantile(0.95, sum(rate(aiops_http_request_duration_seconds_bucket[5m])) by (le))",
+          "legendFormat": "p95"
+        }
+      ]
+    },
+    {
+      "type": "stat",
+      "title": "In-flight requests",
+      "description": "Golden signal: saturation (traffic side).",
+      "gridPos": { "h": 8, "w": 4, "x": 16, "y": 1 },
+      "targets": [{ "refId": "A", "expr": "aiops_http_requests_in_flight" }]
+    },
+    {
+      "type": "gauge",
+      "title": "Database pool utilisation",
+      "description": "Golden signal: saturation (database side). Alert at 90%.",
+      "gridPos": { "h": 8, "w": 4, "x": 20, "y": 1 },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "aiops_db_pool_in_use / clamp_min(aiops_db_pool_size, 1)",
+          "legendFormat": "utilisation"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": { "unit": "percentunit", "max": 1, "min": 0, "thresholds": { "mode": "absolute", "steps": [ { "color": "green", "value": null }, { "color": "orange", "value": 0.75 }, { "color": "red", "value": 0.9 } ] } },
+        "overrides": []
+      }
+    },
+    {
+      "type": "row",
+      "title": "Agent lifecycle",
+      "gridPos": { "h": 1, "w": 24, "x": 0, "y": 9 }
+    },
+    {
+      "type": "timeseries",
+      "title": "Detection latency p95",
+      "description": "SLO: detection latency < 60s (p95).",
+      "gridPos": { "h": 7, "w": 8, "x": 0, "y": 10 },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "histogram_quantile(0.95, sum(rate(aiops_detection_latency_seconds_bucket[10m])) by (le))",
+          "legendFormat": "p95"
+        }
+      ]
+    },
+    {
+      "type": "timeseries",
+      "title": "Investigation latency p95",
+      "description": "SLO: investigation < 120s (p95).",
+      "gridPos": { "h": 7, "w": 8, "x": 8, "y": 10 },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "histogram_quantile(0.95, sum(rate(aiops_investigation_duration_seconds_bucket[15m])) by (le))",
+          "legendFormat": "p95"
+        }
+      ]
+    },
+    {
+      "type": "timeseries",
+      "title": "Verification latency p95",
+      "description": "SLO: verification < 30s (p95).",
+      "gridPos": { "h": 7, "w": 8, "x": 16, "y": 10 },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "histogram_quantile(0.95, sum(rate(aiops_verification_latency_seconds_bucket[15m])) by (le))",
+          "legendFormat": "p95"
+        }
+      ]
+    },
+    {
+      "type": "timeseries",
+      "title": "Incidents created and deduplicated",
+      "description": "Detection outcomes: new incidents versus anomalies folded into an existing incident.",
+      "gridPos": { "h": 7, "w": 8, "x": 0, "y": 17 },
+      "targets": [
+        { "refId": "A", "expr": "sum(rate(aiops_incidents_created_total[10m]))", "legendFormat": "created" },
+        { "refId": "B", "expr": "sum(rate(aiops_incidents_deduplicated_total[10m]))", "legendFormat": "deduplicated" }
+      ]
+    },
+    {
+      "type": "timeseries",
+      "title": "Verification outcomes",
+      "description": "SUCCESS / FAILED / UNKNOWN. A rising UNKNOWN rate means verification cannot conclude.",
+      "gridPos": { "h": 7, "w": 8, "x": 8, "y": 17 },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "sum(rate(aiops_verification_total[10m])) by (outcome)",
+          "legendFormat": "{{outcome}}"
+        }
+      ]
+    },
+    {
+      "type": "timeseries",
+      "title": "Escalations by reason",
+      "description": "The agent handing work to a human, which is a feature — but a spike is a signal.",
+      "gridPos": { "h": 7, "w": 8, "x": 16, "y": 17 },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "sum(rate(aiops_escalation_total[15m])) by (reason)",
+          "legendFormat": "{{reason}}"
+        }
+      ]
+    },
+    {
+      "type": "row",
+      "title": "Safety",
+      "gridPos": { "h": 1, "w": 24, "x": 0, "y": 24 }
+    },
+    {
+      "type": "stat",
+      "title": "High-risk actions executed without approval",
+      "description": "Zero-tolerance objective. Any non-zero value is a page and a release blocker.",
+      "gridPos": { "h": 7, "w": 6, "x": 0, "y": 25 },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "sum(increase(aiops_unsafe_action_attempts_total{outcome=\"executed\"}[24h]))",
+          "legendFormat": "unauthorised executions (24h)"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": { "thresholds": { "mode": "absolute", "steps": [ { "color": "green", "value": null }, { "color": "red", "value": 1 } ] } },
+        "overrides": []
+      }
+    },
+    {
+      "type": "timeseries",
+      "title": "Policy decisions",
+      "description": "ALLOW / DENY / REQUIRE_APPROVAL and denied authorization attempts.",
+      "gridPos": { "h": 7, "w": 9, "x": 6, "y": 25 },
+      "targets": [
+        { "refId": "A", "expr": "sum(rate(aiops_tool_invocations_total[10m])) by (outcome)", "legendFormat": "tool {{outcome}}" },
+        { "refId": "B", "expr": "sum(rate(aiops_authorization_denials_total[10m])) by (role)", "legendFormat": "denied {{role}}" },
+        { "refId": "C", "expr": "sum(rate(aiops_action_proposals_rejected_total[10m])) by (reason)", "legendFormat": "rejected proposal {{reason}}" }
+      ]
+    },
+    {
+      "type": "timeseries",
+      "title": "Rate limiting and validation rejections",
+      "description": "Anti-abuse controls (SEC-006).",
+      "gridPos": { "h": 7, "w": 9, "x": 15, "y": 25 },
+      "targets": [
+        { "refId": "A", "expr": "sum(rate(aiops_rate_limit_rejections_total[10m])) by (scope)", "legendFormat": "rate limited {{scope}}" },
+        { "refId": "B", "expr": "sum(rate(aiops_validation_rejections_total[10m])) by (route)", "legendFormat": "validation {{route}}" },
+        { "refId": "C", "expr": "sum(rate(aiops_prompt_injection_detected_total[30m])) by (pattern)", "legendFormat": "injection {{pattern}}" }
+      ]
+    },
+    {
+      "type": "row",
+      "title": "Dependencies",
+      "gridPos": { "h": 1, "w": 24, "x": 0, "y": 32 }
+    },
+    {
+      "type": "timeseries",
+      "title": "Integration request outcomes by system",
+      "description": "GitHub, Jira, Slack, metrics, logs, payments, deployments.",
+      "gridPos": { "h": 7, "w": 12, "x": 0, "y": 33 },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "sum(rate(aiops_integration_request_total[10m])) by (system, outcome)",
+          "legendFormat": "{{system}} {{outcome}}"
+        }
+      ]
+    },
+    {
+      "type": "timeseries",
+      "title": "Tool success rate (SLO >= 99%)",
+      "description": "Successful tool invocations / all attempts, excluding policy denials.",
+      "gridPos": { "h": 7, "w": 12, "x": 12, "y": 33 },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "sum(rate(aiops_tool_invocations_total{outcome!~\"denied\"}[15m])) by (tool)",
+          "legendFormat": "{{tool}}"
+        },
+        { "refId": "B", "expr": "aiops_action_success_rate", "legendFormat": "overall success rate" }
+      ]
+    },
+    {
+      "type": "timeseries",
+      "title": "LLM latency and errors",
+      "description": "Reasoner health. Fallbacks mean the deterministic offline reasoner is answering.",
+      "gridPos": { "h": 7, "w": 12, "x": 0, "y": 40 },
+      "targets": [
+        { "refId": "A", "expr": "histogram_quantile(0.95, sum(rate(aiops_llm_latency_seconds_bucket[10m])) by (le, provider))", "legendFormat": "p95 {{provider}}" },
+        { "refId": "B", "expr": "sum(rate(aiops_llm_error_total[10m])) by (reason)", "legendFormat": "errors {{reason}}" },
+        { "refId": "C", "expr": "sum(rate(aiops_reasoner_fallback_total[30m])) by (reason)", "legendFormat": "fallback {{reason}}" }
+      ]
+    },
+    {
+      "type": "timeseries",
+      "title": "Evidence collection and source failures",
+      "description": "A failing source degrades an investigation rather than aborting it — visible here.",
+      "gridPos": { "h": 7, "w": 12, "x": 12, "y": 40 },
+      "targets": [
+        { "refId": "A", "expr": "sum(rate(aiops_evidence_collected_total[10m])) by (source)", "legendFormat": "collected {{source}}" },
+        { "refId": "B", "expr": "sum(rate(aiops_evidence_source_failures_total[10m])) by (source, reason)", "legendFormat": "failed {{source}} {{reason}}" }
+      ]
+    }
+  ]
+}

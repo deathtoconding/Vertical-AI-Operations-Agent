@@ -1,0 +1,97 @@
+name: security
+
+# SEC-005 — supply chain and DevSecOps controls. Everything here is blocking: a finding fails
+# the workflow, because a scanner nobody acts on is decoration.
+on:
+  push:
+    branches: [main]
+  pull_request:
+  schedule:
+    - cron: "0 3 * * 1"  # weekly, so new advisories are caught between merges
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  security-events: write
+
+jobs:
+  secrets:
+    name: secret scanning (gitleaks)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          fetch-depth: 0
+      - name: gitleaks
+        uses: gitleaks/gitleaks-action@v2
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GITLEAKS_CONFIG: configs/gitleaks.toml
+          GITLEAKS_ENABLE_COMMENTS: "false"
+      - name: Local hygiene check (duplicate guard, runs without network)
+        run: bash scripts/check_repo_hygiene.sh
+
+  dependencies:
+    name: dependency audit (pip-audit)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.11"
+          cache: pip
+      - run: |
+          python -m pip install --upgrade pip
+          pip install -e ".[dev]"
+      - name: Verify every direct dependency is pinned to an exact version
+        run: python scripts/check_pins.py
+      - name: Audit the locked dependency set
+        run: pip-audit --strict --requirement requirements.lock
+
+  sast:
+    name: static analysis (bandit)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.11"
+          cache: pip
+      - run: |
+          python -m pip install --upgrade pip
+          pip install -e ".[dev]"
+      - run: bandit -q -c pyproject.toml -r app scripts -f json -o bandit.json
+      - name: Fail on medium/high findings
+        run: python scripts/check_bandit.py bandit.json
+
+  container:
+    name: container scan (trivy) + SBOM
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+      - name: Build image
+        run: docker build -f infra/docker/Dockerfile -t aiops-agent:scan .
+      - name: Trivy image scan (fails on HIGH/CRITICAL with a fix available)
+        uses: aquasecurity/trivy-action@0.29.0
+        with:
+          image-ref: aiops-agent:scan
+          format: sarif
+          output: trivy.sarif
+          severity: HIGH,CRITICAL
+          ignore-unfixed: true
+          exit-code: "1"
+      - uses: github/codeql-action/upload-sarif@v3
+        if: always()
+        with:
+          sarif_file: trivy.sarif
+      - name: SBOM (CycloneDX-compatible JSON, kept as a build artefact)
+        uses: actions/setup-python@v6
+        with:
+          python-version: "3.11"
+      - run: |
+          python -m pip install -e ".[dev]"
+          python scripts/generate_sbom.py --output sbom.json
+      - uses: actions/upload-artifact@v4
+        with:
+          name: sbom
+          path: sbom.json

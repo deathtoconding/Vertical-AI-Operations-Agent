@@ -1,0 +1,244 @@
+# SRE-004 — alerting rules for the SLOs in docs/sre/slos.md.
+#
+# Every rule references a metric that this repository actually emits (asserted by
+# tests/unit/planning/test_documentation.py, which parses both files and checks every metric
+# name against app.core.telemetry.METRIC_NAMES). A rule that references a metric nobody exports
+# is a rule that can never fire.
+#
+# Thresholds are initial project targets, not measured production claims.
+groups:
+  - name: aiops-availability
+    interval: 30s
+    rules:
+      - record: aiops:http_error_ratio:5m
+        expr: |
+          sum(rate(aiops_http_requests_total{status=~"5.."}[5m]))
+          /
+          clamp_min(sum(rate(aiops_http_requests_total[5m])), 0.001)
+
+      - alert: ApiErrorBudgetBurning
+        expr: aiops:http_error_ratio:5m > 0.005
+        for: 10m
+        labels:
+          severity: page
+          slo: api-availability
+        annotations:
+          summary: "API 5xx ratio above the 99.5% availability objective"
+          runbook: docs/sre/runbooks/excessive-agent-errors.md
+
+      - alert: ApiLatencyHigh
+        expr: |
+          histogram_quantile(
+            0.95,
+            sum(rate(aiops_http_request_duration_seconds_bucket[5m])) by (le)
+          ) > 2.5
+        for: 10m
+        labels:
+          severity: ticket
+          slo: api-availability
+        annotations:
+          summary: "p95 API latency above 2.5s for 10 minutes"
+
+  - name: aiops-agent-lifecycle
+    interval: 30s
+    rules:
+      - alert: DetectionLatencyHigh
+        expr: histogram_quantile(0.95, sum(rate(aiops_detection_latency_seconds_bucket[10m])) by (le)) > 60
+        for: 10m
+        labels:
+          severity: ticket
+          slo: detection-latency
+        annotations:
+          summary: "detection latency p95 above the 60s objective"
+          runbook: docs/sre/runbooks/excessive-agent-errors.md
+
+      - alert: InvestigationLatencyHigh
+        expr: histogram_quantile(0.95, sum(rate(aiops_investigation_duration_seconds_bucket[15m])) by (le)) > 120
+        for: 15m
+        labels:
+          severity: ticket
+          slo: investigation-latency
+        annotations:
+          summary: "investigation latency p95 above the 120s objective"
+
+      - alert: VerificationLatencyHigh
+        expr: histogram_quantile(0.95, sum(rate(aiops_verification_latency_seconds_bucket[15m])) by (le)) > 30
+        for: 15m
+        labels:
+          severity: ticket
+          slo: verification-latency
+        annotations:
+          summary: "verification latency p95 above the 30s objective"
+
+      - alert: AgentRunFailureRateHigh
+        expr: |
+          sum(increase(aiops_agent_run_failure_total[30m]))
+          /
+          clamp_min(sum(increase(aiops_agent_run_duration_seconds_count[30m])), 1) > 0.05
+        for: 15m
+        labels:
+          severity: ticket
+          slo: agent-run-success
+        annotations:
+          summary: "more than 5% of agent runs failed in the last 30 minutes"
+          runbook: docs/sre/runbooks/excessive-agent-errors.md
+
+      - alert: CriticalIncidentNotClosed
+        expr: max_over_time(aiops_incidents_open_total{severity="SEV1"}[24h]) > 0
+        for: 24h
+        labels:
+          severity: page
+          slo: zero-lost-critical-incidents
+        annotations:
+          summary: "a SEV1 incident has stayed open for 24 hours"
+          runbook: docs/sre/incident-response.md
+
+  - name: aiops-safety
+    interval: 15s
+    rules:
+      # The zero-tolerance objective: a high-risk action attempted without a valid approval.
+      # This pages immediately and is not subject to an error budget.
+      - alert: UnsafeHighRiskActionAttempt
+        expr: increase(aiops_unsafe_action_attempts_total{outcome="executed"}[5m]) > 0
+        labels:
+          severity: page
+          slo: zero-unauthorised-high-risk-actions
+        annotations:
+          summary: "a high-risk action executed without a valid approval"
+          runbook: docs/sre/runbooks/unsafe-agent-behaviour.md
+
+      - alert: UnsafeActionAttemptsSpike
+        expr: increase(aiops_unsafe_action_attempts_total[15m]) > 3
+        labels:
+          severity: page
+        annotations:
+          summary: "repeated unsafe action attempts in 15 minutes"
+          runbook: docs/sre/runbooks/unsafe-agent-behaviour.md
+
+      - alert: AuditChainBroken
+        expr: max_over_time(aiops_audit_chain_broken[5m]) > 0
+        labels:
+          severity: page
+        annotations:
+          summary: "the audit hash chain failed verification"
+          runbook: docs/sre/incident-response.md
+
+      - alert: AuthorizationDenialsSpike
+        expr: increase(aiops_authorization_denials_total[10m]) > 10
+        labels:
+          severity: ticket
+        annotations:
+          summary: "unusual number of authorization denials"
+          runbook: docs/sre/runbooks/unsafe-agent-behaviour.md
+
+      - alert: PromptInjectionDetected
+        expr: increase(aiops_prompt_injection_detected_total[30m]) > 0
+        labels:
+          severity: ticket
+        annotations:
+          summary: "untrusted evidence contained injected instructions"
+          runbook: docs/sre/runbooks/unsafe-agent-behaviour.md
+
+  - name: aiops-dependencies
+    interval: 30s
+    rules:
+      - alert: IntegrationFailureRateHigh
+        expr: |
+          sum(rate(aiops_integration_request_total{outcome!~"success"}[10m])) by (system)
+          /
+          clamp_min(sum(rate(aiops_integration_request_total[10m])) by (system), 0.001) > 0.25
+        for: 10m
+        labels:
+          severity: ticket
+        annotations:
+          summary: "an integration is failing more than a quarter of its requests"
+          runbook: docs/sre/runbooks/jira-unavailable.md
+
+      - alert: ToolFailureRateHigh
+        expr: |
+          sum(rate(aiops_tool_invocations_total{outcome=~"failure|timeout"}[15m]))
+          /
+          clamp_min(sum(rate(aiops_tool_invocations_total[15m])), 0.001) > 0.01
+        for: 15m
+        labels:
+          severity: ticket
+          slo: tool-success
+        annotations:
+          summary: "tool execution success below the 99% objective"
+
+      - alert: LlmErrorRateHigh
+        expr: |
+          sum(rate(aiops_llm_error_total[15m]))
+          /
+          clamp_min(sum(rate(aiops_llm_latency_seconds_count[15m])), 0.001) > 0.2
+        for: 15m
+        labels:
+          severity: ticket
+        annotations:
+          summary: "the LLM provider is failing more than 20% of calls (deterministic fallback active)"
+          runbook: docs/sre/runbooks/llm-failure.md
+
+      - alert: ReasonerFallbackActive
+        expr: increase(aiops_reasoner_fallback_total[30m]) > 3
+        for: 5m
+        labels:
+          severity: ticket
+        annotations:
+          summary: "the agent is running on the deterministic offline reasoner"
+          runbook: docs/sre/runbooks/llm-failure.md
+
+  - name: aiops-saturation
+    interval: 30s
+    rules:
+      - alert: DatabasePoolSaturated
+        expr: aiops_db_pool_in_use / clamp_min(aiops_db_pool_size, 1) > 0.9
+        for: 10m
+        labels:
+          severity: page
+        annotations:
+          summary: "database connection pool above 90% utilisation"
+          runbook: docs/sre/runbooks/database-failure.md
+
+      - alert: DatabaseQueryFailures
+        expr: increase(aiops_db_query_failures_total[10m]) > 5
+        for: 5m
+        labels:
+          severity: page
+        annotations:
+          summary: "repeated database query failures"
+          runbook: docs/sre/runbooks/database-failure.md
+
+      - alert: AiopsScrapeMissing
+        expr: up{job="aiops-agent"} == 0
+        for: 5m
+        labels:
+          severity: page
+        annotations:
+          summary: "the application is not scrapeable"
+          runbook: docs/sre/runbooks/database-failure.md
+
+  - name: aiops-verification-quality
+    interval: 5m
+    rules:
+      # Not an SLO: a rising UNKNOWN rate means verification cannot conclude, which is a silent
+      # quality loss (see docs/sre/slos.md).
+      - alert: VerificationUnknownRateHigh
+        expr: |
+          sum(rate(aiops_verification_total{outcome="unknown"}[30m]))
+          /
+          clamp_min(sum(rate(aiops_verification_total[30m])), 0.001) > 0.05
+        for: 30m
+        labels:
+          severity: ticket
+        annotations:
+          summary: "more than 5% of verifications cannot reach a conclusion"
+          runbook: docs/sre/runbooks/excessive-agent-errors.md
+
+      - alert: EscalationRateHigh
+        expr: increase(aiops_escalation_total[1h]) > 5
+        for: 30m
+        labels:
+          severity: ticket
+        annotations:
+          summary: "elevated escalation rate — the agent is not resolving incidents"
+          runbook: docs/sre/runbooks/excessive-agent-errors.md
