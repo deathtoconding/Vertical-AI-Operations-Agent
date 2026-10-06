@@ -233,9 +233,8 @@ class EvidenceCollector:
         )
         lines = payload.get("lines", [])
         clean_lines = []
-        # Only *heuristic names* become injection flags. The provider-level "injections" field
-        # carries the raw simulated line, which stays inside the sanitised evidence content — #
-        # flags must be a small, stable vocabulary or they are useless as metrics and audits.
+        # Only *heuristic names* become injection flags; flags must be a small, stable
+        # vocabulary or they are useless as metrics and audits.
         injections: list[str] = []
         for line in lines:
             sanitized = sanitize_untrusted(
@@ -249,6 +248,15 @@ class EvidenceCollector:
                     "message": sanitized.text,
                 }
             )
+        # Providers also report injection *samples* they observed. That text is untrusted too,
+        # so it is normalised and bounded before it becomes evidence, and the samples are run
+        # through the same heuristics as the log lines themselves.
+        provider_injections = [
+            sanitize_untrusted(str(item), source="logs", max_chars=self.max_chars // 4)
+            for item in (payload.get("injections") or [])
+        ]
+        injections.extend(flag for item in provider_injections for flag in item.injections)
+
         errors = [
             line for line in clean_lines if str(line["severity"]).upper() in {"ERROR", "WARN"}
         ]
@@ -264,7 +272,7 @@ class EvidenceCollector:
                 "error_lines": len(errors),
                 "total_lines": len(clean_lines),
                 "injections": sorted(set(injections)),
-                "simulated_injections": list(payload.get("injections", []) or []),
+                "simulated_injections": [item.text for item in provider_injections],
             },
             timestamp=self._parse_ts(payload.get("window_end")),
             confidence=Confidence.MEDIUM if errors else Confidence.LOW,

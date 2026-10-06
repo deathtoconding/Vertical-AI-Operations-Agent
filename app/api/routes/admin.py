@@ -197,13 +197,6 @@ async def retry_action(action_id: str, services: ServicesDep, actor: ActorDep) -
     }
 
 
-@router.get("/audit/verify")
-async def audit_verify(services: ServicesDep, actor: ActorDep) -> dict[str, Any]:
-    """Expose the hash-chain check as an endpoint an operator can call mid-incident."""
-    actor.require(Permission.AUDIT_READ)
-    return await services.audit.verify_chain()
-
-
 @router.get("/release/current")
 async def current_release(services: ServicesDep, actor: ActorDep) -> dict[str, Any]:
     actor.require(Permission.INCIDENTS_READ)

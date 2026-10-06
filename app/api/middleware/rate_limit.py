@@ -39,7 +39,10 @@ class RateLimitMiddleware(BaseHTTPMiddleware):
 
     async def dispatch(self, request: Request, call_next: Any) -> Response:
         path = request.url.path
-        if request.method == "OPTIONS" or path in EXEMPT_PATHS or path.startswith(EXEMPT_PATHS):
+        # Exact match or a subtree of an exempt path: "/health" and "/ui/app.js" are exempt,
+        # "/healthcheck" is not a probe we promised to leave unthrottled.
+        exempt = any(path == prefix or path.startswith(f"{prefix}/") for prefix in EXEMPT_PATHS)
+        if request.method == "OPTIONS" or exempt:
             return await call_next(request)
 
         client = self._client_key(request)
@@ -93,17 +96,3 @@ class RateLimitMiddleware(BaseHTTPMiddleware):
 
 
 __all__ = ["EXEMPT_PATHS", "RateLimitMiddleware"]
-
-
-def client_key(request: Request) -> str:
-    """Identify the caller by token when present, else by peer address.
-
-    Preferring the token means one noisy client cannot exhaust another's budget; falling back to
-    the address keeps unauthenticated floods bounded too.
-    """
-    from app.api.middleware.rate_limit import RateLimitMiddleware
-
-    return RateLimitMiddleware._client_key(request)
-
-
-__all__ = ["EXEMPT_PATHS", "RateLimitMiddleware", "client_key"]

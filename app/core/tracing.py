@@ -11,6 +11,7 @@ without exporting anything anywhere.
 
 from __future__ import annotations
 
+import hashlib
 from collections.abc import Iterator
 from contextlib import contextmanager
 from typing import Any, Final
@@ -25,7 +26,14 @@ from opentelemetry.sdk.trace.export import (
     SpanExporter,
 )
 from opentelemetry.sdk.trace.export.in_memory_span_exporter import InMemorySpanExporter
-from opentelemetry.trace import Span, Status, StatusCode
+from opentelemetry.trace import (
+    NonRecordingSpan,
+    Span,
+    SpanContext,
+    Status,
+    StatusCode,
+    TraceFlags,
+)
 
 SERVICE_RESOURCE: Final[str] = "service.name"
 
@@ -89,16 +97,49 @@ def reset_tracing_for_tests() -> None:
     trace._TRACER_PROVIDER = None  # type: ignore[attr-defined]  # OTel has no public reset
 
 
+def incident_context(incident_id: str) -> SpanContext:
+    """A deterministic OTel span context derived from the incident id.
+
+    An incident's lifecycle crosses process *and* request boundaries: a human approves in one
+    request, the executor runs in the next. A random root span per request would split one
+    incident across two traces, which is exactly the situation tracing is supposed to make
+    legible. Deriving the trace id from the incident id means every span for that incident
+    lands in one trace, on any replica, without storing tracing state anywhere.
+    """
+    digest = hashlib.sha256(f"incident:{incident_id}".encode()).digest()
+    return SpanContext(
+        trace_id=int.from_bytes(digest[:16], "big") or 1,
+        span_id=int.from_bytes(digest[16:24], "big") or 1,
+        is_remote=True,
+        trace_flags=TraceFlags(TraceFlags.SAMPLED),
+    )
+
+
+def _parent_context(incident_id: str | None) -> Any:
+    """Reuse the current context when it already belongs to this incident's trace."""
+    if not incident_id:
+        return None
+    derived = incident_context(incident_id)
+    current = trace.get_current_span().get_span_context()
+    if current.is_valid and current.trace_id == derived.trace_id:
+        return None  # keep the natural parent-child hierarchy inside the trace
+    return trace.set_span_in_context(NonRecordingSpan(derived))
+
+
 @contextmanager
-def span(name: str, **attributes: Any) -> Iterator[Span]:
+def span(name: str, incident_id: str | None = None, **attributes: Any) -> Iterator[Span]:
     """Start a span, attach attributes, and record failures as span status.
 
-    ``None`` attribute values are dropped, because OTel rejects them and a missing id should
-    not break the tracing path.
+    ``incident_id`` (also accepted as ``incident_id=...`` in ``**attributes``) anchors the span
+    in the incident's deterministic trace. ``None`` attribute values are dropped, because OTel
+    rejects them and a missing id should not break the tracing path.
     """
+    incident_id = incident_id or attributes.pop("incident_id", None)
     tracer = get_tracer()
     clean = {key: value for key, value in attributes.items() if value is not None}
-    with tracer.start_as_current_span(name) as current:
+    with tracer.start_as_current_span(name, context=_parent_context(incident_id)) as current:
+        if incident_id:
+            current.set_attribute("incident.id", incident_id)
         for key, value in clean.items():
             current.set_attribute(_attribute_key(key), value)
         _bind_trace_id_to_logs(current)
@@ -142,6 +183,7 @@ __all__ = [
     "current_trace_id",
     "get_memory_exporter",
     "get_tracer",
+    "incident_context",
     "reset_tracing_for_tests",
     "span",
 ]

@@ -15,6 +15,7 @@ from app.api.dependencies import get_actor, get_services
 from app.application.container import Services
 from app.core.errors import NotFoundError
 from app.core.security import Actor, Permission
+from app.domain.enums import AgentState
 from app.domain.schemas import ReasonRequest, StartRunRequest
 
 router = APIRouter(prefix="/agents", tags=["agents"])
@@ -40,15 +41,13 @@ async def start_run(
 async def list_runs(
     services: ServicesDep,
     actor: ActorDep,
-    state: Annotated[str | None, Query()] = None,
+    # Declared as the enum so an unknown state is a 422 from the framework, not a ValueError
+    # 500 from deep inside the repository.
+    state: Annotated[AgentState | None, Query()] = None,
     limit: Annotated[int, Query(ge=1, le=200)] = 50,
 ) -> dict[str, Any]:
     actor.require(Permission.AGENT_RUNS_READ)
-    from app.domain.enums import AgentState
-
-    runs = await services.runs.list_runs(
-        states=[AgentState(state.upper())] if state else None, limit=limit
-    )
+    runs = await services.runs.list_runs(state=state, limit=limit)
     return {
         "runs": [
             {

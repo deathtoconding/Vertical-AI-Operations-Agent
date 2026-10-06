@@ -37,8 +37,11 @@ MAX_UNTRUSTED_CHARS: Final[int] = 4000
 MAX_UNTRUSTED_LINES: Final[int] = 200
 
 CONTROL_CHARS: Final[re.Pattern[str]] = re.compile(
-    r"[\x00-\x08\x0b\x0c\x0e-\x1f\x7f]"  # C0 controls except \t \n \r
-    r"|\x1b\[[0-9;]*[A-Za-z]"  # ANSI escape sequences
+    # The ANSI alternative must come first: ``\x1b`` is also in the C0 range below, and
+    # alternation is leftmost-first, so listing the C0 class first would strip only the ESC
+    # byte and leave "[31m" glued to the following word.
+    r"\x1b\[[0-9;]*[A-Za-z]"  # ANSI escape sequences
+    r"|[\x00-\x08\x0b\x0c\x0e-\x1f\x7f]"  # C0 controls except \t \n \r
     r"|[\u200b-\u200f\u202a-\u202e\u2060-\u2064\ufeff]"  # zero-width / bidi overrides
 )
 
@@ -172,7 +175,12 @@ def sanitize_untrusted(
     if text is None:  # defensive: an adapter bug must not become a crash
         text = ""
     original_length = len(text)
-    cleaned, removed = normalise_text(text)
+    # Detection runs on *both* the normalised original and the control-character-stripped text.
+    # An attacker can hide a keyword behind an escape sequence ("\x1b[31mignore previous
+    # rules") or a zero-width joiner, and the stripped form only reveals it afterwards; flags
+    # are cheap and a missed flag is not.
+    normalised = unicodedata.normalize("NFKC", text)
+    cleaned, removed = normalise_text(normalised)
 
     lines = cleaned.splitlines()
     if len(lines) > max_lines:
@@ -183,7 +191,13 @@ def sanitize_untrusted(
     if truncated:
         cleaned = cleaned[:max_chars] + f"\n…[truncated, {original_length} chars total]"
 
-    injections = detect_injection(cleaned)
+    # Control sequences are replaced with a *space* for detection (not deleted): deleting
+    # "\x1b[31m" glues "m" to the following word, which breaks the word boundaries the
+    # heuristics rely on.
+    detection_text = CONTROL_CHARS.sub(" ", normalised)
+    injections = tuple(
+        dict.fromkeys((*detect_injection(detection_text), *detect_injection(cleaned)))
+    )
     if record_metrics:
         if truncated:
             UNTRUSTED_TRUNCATIONS.labels(source=source).inc()

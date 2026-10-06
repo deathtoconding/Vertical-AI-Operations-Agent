@@ -101,7 +101,11 @@ class SandboxState:
             self.previous_release = DEFAULT_GOOD_RELEASE
             self.fault_started_at = (now or datetime.now(UTC)) - timedelta(minutes=18)
         elif scenario == "C":
-            self.fault_started_at = (now or datetime.now(UTC)) - timedelta(minutes=22)
+            # 12 minutes, not 22: the payment fault has to be visible inside a 30-minute
+            # detection window whose robust baseline is a median. A fault that covers most of
+            # the baseline window raises the median with it and hides itself — the detection
+            # maths is honest, the scenario was not.
+            self.fault_started_at = (now or datetime.now(UTC)) - timedelta(minutes=12)
         else:
             self.fault_started_at = None
         logger.info("sandbox_scenario_set", scenario=scenario, release=self.active_release)

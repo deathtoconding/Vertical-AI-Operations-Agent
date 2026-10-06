@@ -85,6 +85,33 @@ def error_body(
 
 
 def install_error_handlers(app: FastAPI) -> None:
+    @app.exception_handler(AuthorizationError)
+    async def _authorization_denied(request: Request, exc: AuthorizationError) -> JSONResponse:
+        """A 403 is recorded before it is returned.
+
+        A denial that leaves no trace is indistinguishable from a bug, and "who tried to do
+        what" is exactly the question an investigation asks. The audit write happens in its own
+        transaction so a failed request cannot roll its own denial record back.
+        """
+        from app.api.dependencies import audit_authorization_denial
+        from app.core.security import authenticate
+
+        container = getattr(request.app.state, "container", None)
+        if container is not None:
+            try:
+                actor = authenticate(request.headers.get("Authorization"), container.settings)
+                await audit_authorization_denial(request, actor, exc)
+            except Exception as audit_error:  # pragma: no cover - auditing never masks the 403
+                logger.warning(
+                    "authorization_denial_audit_failed", error=type(audit_error).__name__
+                )
+        return JSONResponse(
+            status_code=status.HTTP_403_FORBIDDEN,
+            content=error_body(
+                exc.code, str(exc), details=exc.details, status_code=status.HTTP_403_FORBIDDEN
+            ),
+        )
+
     @app.exception_handler(AppError)
     async def _app_error(request: Request, exc: AppError) -> JSONResponse:
         status_code = _status_for(exc)

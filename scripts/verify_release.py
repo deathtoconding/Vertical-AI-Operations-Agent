@@ -230,12 +230,19 @@ class ReleaseVerifier:
                     f"approval was refused with HTTP {decision.status_code}",
                     {"approval_id": approval["id"], "body": self._json(decision)},
                 )
+            # Approving is not executing: the decision releases the gate and the run is
+            # resumed explicitly (the decision response says exactly this). A verifier that
+            # approved and then waited for a terminal state would time out and blame the
+            # candidate for its own missing step.
+            resumed = self._resume_run(incident_id)
             while time.monotonic() < deadline:
                 incident = self._incident(incident_id)
                 state = str(incident.get("status") or "UNKNOWN")
                 if state in TERMINAL_STATES:
                     break
                 time.sleep(1.0)
+            if resumed is not None:
+                approvals[0]["resume"] = resumed
 
         incident = self._incident(incident_id)
         state = str(incident.get("status") or "UNKNOWN")
@@ -293,6 +300,23 @@ class ReleaseVerifier:
         payload = self._json(self.client.get("/api/v1/approvals", params={"pending_only": "true"}))
         items = payload.get("approvals") or []
         return [item for item in items if item.get("incident_id") == incident_id]
+
+    def _resume_run(self, incident_id: str) -> dict[str, Any] | None:
+        """Resume the run that is waiting on the approval we just granted."""
+        payload = self._json(self.client.get(f"/api/v1/incidents/{incident_id}"))
+        run = payload.get("run") or {}
+        run_id = str(run.get("id") or "")
+        if not run_id or str(run.get("state")) != "WAITING_APPROVAL":
+            return None
+        response = self.client.post(
+            f"/api/v1/agents/runs/{run_id}/resume",
+            json={"reason": "release verification: approval granted (DEV-003)"},
+        )
+        return {
+            "run_id": run_id,
+            "status_code": response.status_code,
+            "state": (self._json(response).get("run") or {}).get("state"),
+        }
 
     def _transitions(self, run_id: str) -> list[dict[str, Any]]:
         if not run_id:

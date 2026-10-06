@@ -29,6 +29,18 @@ logger = get_logger(__name__)
 GENESIS_HASH = "0" * 64
 
 
+def json_safe(payload: dict[str, Any]) -> dict[str, Any]:
+    """Return a JSON-serialisable copy of an audit payload.
+
+    Audit payloads are assembled from domain objects and can contain ``datetime`` values. The
+    column is JSONB, so a value that cannot be serialised fails at flush time — after the event
+    has already happened, which is the worst possible moment to lose an audit record. The
+    round-trip normalises exactly what will be stored, so the hash is computed over the bytes a
+    verifier will later read back.
+    """
+    return json.loads(json.dumps(payload, sort_keys=True, default=str))
+
+
 def compute_entry_hash(
     *, prev_hash: str, occurred_at: datetime, event_type: str, payload: dict[str, Any]
 ) -> str:
@@ -82,7 +94,7 @@ class AuditRepository:
         """Append one audited event. Secrets in the payload are redacted before hashing."""
         prev_hash, _ = await self._chain_head()
         occurred_at = utcnow()
-        safe_payload = redact_mapping(payload or {})
+        safe_payload = redact_mapping(json_safe(payload or {}))
         entry_hash = compute_entry_hash(
             prev_hash=prev_hash,
             occurred_at=occurred_at,
@@ -180,4 +192,4 @@ class AuditRepository:
         return int(result.scalar_one())
 
 
-__all__ = ["GENESIS_HASH", "AuditRepository", "compute_entry_hash"]
+__all__ = ["GENESIS_HASH", "AuditRepository", "compute_entry_hash", "json_safe"]

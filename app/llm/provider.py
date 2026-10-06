@@ -19,7 +19,7 @@ import json
 import re
 from dataclasses import dataclass
 from time import perf_counter
-from typing import Any, Protocol
+from typing import Any, Final, Protocol
 
 import httpx
 
@@ -30,6 +30,8 @@ from app.core.telemetry import LLM_ERRORS, LLM_LATENCY, LLM_TOKENS
 from app.domain.diagnosis import Diagnosis, Hypothesis, RecommendedAction
 
 logger = get_logger(__name__)
+
+ALTERNATIVE_PRESENT_CONFIDENCE_CAP: Final[float] = 0.6
 
 PROMPT_VERSION = "v1"
 MAX_COMPLETION_TOKENS = 1200
@@ -337,6 +339,7 @@ class DeterministicReasoner:
 
         # 5. If nothing supportive was found, say so instead of inventing a cause.
         if not hypothesis_parts:
+            LLM_LATENCY.labels(provider=self.name).observe(perf_counter() - started)
             return Diagnosis(
                 hypothesis=(
                     "Insufficient correlated evidence to name a cause; the anomaly is real but "
@@ -364,6 +367,30 @@ class DeterministicReasoner:
         )
         confidence = min(0.85, confidence)
 
+        # More than one signal family contributing means more than one explanation is live. Rank
+        # them explicitly and hold the primary hypothesis below certainty: a single confident
+        # story built from two correlated signals is exactly how an operator gets misled.
+        alternatives = _alternative_hypotheses(
+            incident,
+            evidence_ids=evidence_ids,
+            counter_ids=counter_ids,
+            primary_confidence=confidence,
+            has_deployment=bool(github_deployment or deployment),
+            has_payment=bool(payment_metric),
+        )
+        if alternatives:
+            confidence = min(confidence, ALTERNATIVE_PRESENT_CONFIDENCE_CAP)
+            uncertainties.append(
+                "more than one explanation is consistent with the evidence; "
+                "the alternatives are listed in `hypotheses` and are not ruled out"
+            )
+
+        # Reasoning latency is exported under the same family as the LLM path, labelled by
+        # provider: the SLO panel answers "how long did reasoning take" whichever reasoner
+        # answered, instead of going blank in the offline profile (SRE-004).
+        latency = perf_counter() - started
+        LLM_LATENCY.labels(provider=self.name).observe(latency)
+
         return Diagnosis(
             hypothesis=statement,
             evidence_ids=list(dict.fromkeys(evidence_ids)),
@@ -383,7 +410,8 @@ class DeterministicReasoner:
                     confidence=round(confidence, 3),
                     rationale="primary hypothesis from deployment/time correlation",
                     causal_chain=_causal_chain(release, incident),
-                )
+                ),
+                *alternatives,
             ],
             recommended_actions=recommended,
             unsupported_claims=[],
@@ -396,8 +424,56 @@ class DeterministicReasoner:
             degraded_reason=self.degraded_reason,
             injection_flags=injections,
             prompt_version=PROMPT_VERSION,
-            latency_seconds=round(perf_counter() - started, 4),
+            latency_seconds=round(latency, 4),
         )
+
+
+def _alternative_hypotheses(
+    incident: dict[str, Any],
+    *,
+    evidence_ids: list[str],
+    counter_ids: list[str],
+    primary_confidence: float,
+    has_deployment: bool,
+    has_payment: bool,
+) -> list[Hypothesis]:
+    """Explain what *else* could be true, ranked below the primary hypothesis.
+
+    Deterministic and conservative: an alternative is only emitted when the evidence genuinely
+    admits one — a deployment correlation that could equally be load-driven, or a payment
+    anomaly that could equally be our own retry behaviour.
+    """
+    alternatives: list[Hypothesis] = []
+    alternatives.append(
+        Hypothesis(
+            statement=(
+                f"{incident.get('title', 'The incident')} could also be caused by load or "
+                "capacity pressure rather than by a change: the anomaly's onset is correlated "
+                "with the release, but no change diff was inspected."
+            ),
+            evidence_ids=list(dict.fromkeys(evidence_ids)),
+            counter_evidence_ids=list(dict.fromkeys(counter_ids)),
+            confidence=round(max(0.1, primary_confidence - 0.25), 3),
+            rationale=(
+                "traffic and saturation move with the daily curve; a temporal correlation is not "
+                "a proven mechanism"
+            ),
+        )
+    )
+    if has_payment:
+        alternatives.append(
+            Hypothesis(
+                statement=(
+                    "The payment failures could originate in the provider's own degradation "
+                    "rather than in this service's release."
+                ),
+                evidence_ids=list(dict.fromkeys(evidence_ids)),
+                counter_evidence_ids=[],
+                confidence=round(max(0.1, primary_confidence - 0.3), 3),
+                rationale="provider status and error codes were the primary payment signal",
+            )
+        )
+    return alternatives
 
 
 def _find(

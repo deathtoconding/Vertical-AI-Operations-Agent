@@ -8,6 +8,7 @@ from fastapi import APIRouter, Depends, Query, status
 
 from app.api.dependencies import get_actor, get_services
 from app.application.container import Services
+from app.core.errors import NotFoundError, ValidationFailed
 from app.core.security import Actor, Permission
 from app.domain.enums import AuditEventType, IncidentStatus
 from app.investigation.collector import EvidenceCollector
@@ -27,12 +28,25 @@ async def list_incidents(
     limit: Annotated[int, Query(ge=1, le=200)] = 50,
 ) -> dict[str, Any]:
     actor.require(Permission.INCIDENTS_READ)
-    if status_filter and status_filter.lower() in {"open", "active"}:
-        incidents = await services.incidents.list_open(limit=limit)
-    else:
-        incidents = await services.incidents.list(
-            status=IncidentStatus(status_filter.upper()) if status_filter else None, limit=limit
-        )
+    parsed: IncidentStatus | None = None
+    if status_filter:
+        if status_filter.lower() in {"open", "active"}:
+            parsed = IncidentStatus.OPEN
+        else:
+            try:
+                parsed = IncidentStatus(status_filter.upper())
+            except ValueError:
+                # An unvalidated enum here used to surface as a ValueError and a 500; an
+                # unknown filter is a client error and must read like one.
+                raise ValidationFailed(
+                    f"Unknown incident status '{status_filter}'.",
+                    details={"allowed": [status.value for status in IncidentStatus]},
+                ) from None
+    incidents = (
+        await services.incidents.list_open(limit=limit)
+        if parsed is IncidentStatus.OPEN
+        else await services.incidents.list(status=parsed, limit=limit)
+    )
     counts = await services.incidents.count_by_status()
     return {
         "incidents": [_serialise(item) for item in incidents],
@@ -46,8 +60,6 @@ async def get_incident(incident_id: str, services: ServicesDep, actor: ActorDep)
     actor.require(Permission.INCIDENTS_READ)
     incident = await services.incidents.get(incident_id)
     if incident is None:
-        from app.core.errors import NotFoundError
-
         raise NotFoundError("Incident not found.", details={"incident_id": incident_id})
     return {
         "incident": _serialise(incident),

@@ -136,6 +136,10 @@ class RollbackDrill:
                 {"approval_id": approval["id"], "body": self._json(decision)},
             )
 
+        # The approval releases the gate; the run must then be resumed before the executor
+        # acts. Without this the drill would wait for a terminal state that can never arrive.
+        resumed = self._resume_run(incident_id)
+
         state = "UNKNOWN"
         while time.monotonic() < deadline:
             incident = self._incident(incident_id)
@@ -158,6 +162,7 @@ class RollbackDrill:
             {
                 "approval_id": approval["id"],
                 "tool_name": approval.get("tool_name"),
+                "resume": resumed,
                 "state": state,
                 "verification_outcome": outcome,
                 "audit_chain": self._json(self.client.get("/api/v1/audit/verify")),
@@ -187,6 +192,23 @@ class RollbackDrill:
     def _incident(self, incident_id: str) -> dict[str, Any]:
         payload = self._json(self.client.get(f"/api/v1/incidents/{incident_id}"))
         return payload.get("incident") or {}
+
+    def _resume_run(self, incident_id: str) -> dict[str, Any] | None:
+        """Resume the run the approval was waiting on (the human step, then the machine step)."""
+        payload = self._json(self.client.get(f"/api/v1/incidents/{incident_id}"))
+        run = payload.get("run") or {}
+        run_id = str(run.get("id") or "")
+        if not run_id or str(run.get("state")) != "WAITING_APPROVAL":
+            return None
+        response = self.client.post(
+            f"/api/v1/agents/runs/{run_id}/resume",
+            json={"reason": "DEV-004 rollback drill: approval granted, executing"},
+        )
+        return {
+            "run_id": run_id,
+            "status_code": response.status_code,
+            "state": (self._json(response).get("run") or {}).get("state"),
+        }
 
     def _pending_approvals(self, incident_id: str) -> list[dict[str, Any]]:
         payload = self._json(self.client.get("/api/v1/approvals", params={"pending_only": "true"}))
