@@ -29,11 +29,16 @@ are recorded because each one made a control either fail for the wrong reason or
   whose `setup-trivy` and `actions/cache` references resolve by SHA and whose inputs were checked
   against its `action.yaml`; the pinning test now rejects a ref that is not a release tag or a SHA.
 - **Findings were only visible in a log file.** The secret-scanning job failed with "see job
-  summary for details", leaving the findings in a summary and a log.
-  `scripts/report_gitleaks_findings.py` reads the SARIF report the action already writes and
-  re-emits every result as a check annotation (rule, file, line, commit, `.gitleaksignore`
-  fingerprint — never the secret), so a finding is visible on the check run and readable through
-  the API.
+  summary for details", leaving the findings in a summary and a log, and the image scan reported
+  through its exit code alone. `scripts/report_sarif_findings.py` reads the SARIF report each
+  scanner already writes and re-emits every result as a check annotation (rule, file, line, and —
+  for gitleaks — the commit and `.gitleaksignore` fingerprint; never the secret), so a finding is
+  visible on the check run and readable through the API.
+- **The README's own examples were reported as credentials.** The default `curl-auth-header` rule
+  reads `curl … -H 'Authorization: Bearer <value>'` as a leaked token, and the README documents the
+  sandbox tokens exactly that way — four findings on the release commit, because the README is not
+  under `docs/`. The global allowlist now recognises the repository's documented demo token *names*
+  (`dev-…`/`test-…`/`ci-…` + role + `-token`); any other value still fails the scan.
 - **Strict type checking failed on the CI install profile.** `scripts/pg_server.py` used a static
   `from pgserver import get_server  # type: ignore[attr-defined]`. `pgserver` is the optional
   `localdb` extra and its stubs do not re-export the function, so on the `.[dev]` profile CI

@@ -121,6 +121,10 @@ paths = [
 ]
 # Values that are obviously synthetic are never findings, wherever they appear.
 regexes = [
-  '''(?i)(placeholder|change[-_ ]?me|example\.invalid|test-(viewer|operator|sre|admin)|your-[a-z-]+token)''',
+  '''(?i)(placeholder|change[-_ ]?me|example\.invalid|your-[a-z-]+token)''',
+  # The demonstration and CI token *names* this repository documents (`dev-sre-token` in the
+  # README's curl examples, `test-operator-token` in the workflows) are registry keys for the
+  # sandbox profile, scoped by name: `<env>-<role>-token`. Any other value keeps firing.
+  '''(?i)(?:dev|test|ci)-(?:viewer|operator|sre|admin)-token''',
   '''sha256:[a-f0-9]{64}''',
 ]

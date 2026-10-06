@@ -264,7 +264,7 @@ def test_the_evaluator_covers_every_feature_the_ruleset_uses() -> None:
 # How a finding is reported
 # --------------------------------------------------------------------------- #
 
-SCRIPT = "report_gitleaks_findings"
+SCRIPT = "report_sarif_findings"
 
 
 def load_script(name: str) -> Any:
@@ -309,7 +309,7 @@ def sarif(rule_id: str, path: str, line: int, commit: str, snippet: str) -> path
     return report
 
 
-def test_a_finding_is_annotated_with_its_location_and_fingerprint(tmp_path: pathlib.Path) -> None:
+def test_a_finding_is_annotated_with_its_location_and_fingerprint() -> None:
     """The annotation must be actionable (file, line, fingerprint) and must not leak the secret."""
     module = load_script(SCRIPT)
     report = sarif(
@@ -320,7 +320,7 @@ def test_a_finding_is_annotated_with_its_location_and_fingerprint(tmp_path: path
         "DEPLOY_TOKEN=do-not-repeat-this-value",
     )
     result = module.results_of(json.loads(report.read_text(encoding="utf-8")))[0]
-    annotation = module.annotate(result)
+    annotation = module.annotate(result, "gitleaks")
 
     assert annotation.startswith("::error file=scripts/deploy%2Cprod.sh,line=36::")
     assert "aiops-deploy-credential" in annotation
@@ -342,3 +342,70 @@ def test_the_reporter_only_fails_when_there_is_something_to_report() -> None:
     # A run whose scan never produced a report must not turn a scanner failure into a *reporting*
     # failure: the scanner step owns that verdict.
     assert module.main(["/tmp/aiops-test-missing.sarif"]) == 0
+
+
+def test_the_image_scan_is_annotated_without_a_commit_fingerprint() -> None:
+    """Trivy reports on the built image, so its findings have no commit to fingerprint."""
+    module = load_script(SCRIPT)
+    annotation = module.annotate(
+        {
+            "ruleId": "CVE-2026-1234",
+            "locations": [
+                {
+                    "physicalLocation": {
+                        "artifactLocation": {"uri": "python:3.11-slim (debian 12.x)"},
+                        "region": {"startLine": 1},
+                    }
+                }
+            ],
+        },
+        "trivy",
+    )
+    assert "trivy: CVE-2026-1234" in annotation
+    assert "fingerprint" not in annotation
+
+
+# --------------------------------------------------------------------------- #
+# The global allowlist, against the repository's own documentation
+# --------------------------------------------------------------------------- #
+
+
+def global_allowlist_suppresses(path: str, secret: str, match: str, line: str) -> bool:
+    """`detect.go`: a global *path* pattern skips a file; regexes hit secret/match/line."""
+    allowlist = _config()["allowlist"]
+    if any(re.search(pattern, path) for pattern in allowlist.get("paths", [])):
+        return True
+    target = {"secret": secret, "match": match, "line": line}[
+        allowlist.get("regexTarget", "secret")
+    ]
+    if any(re.search(pattern, target) for pattern in allowlist.get("regexes", [])):
+        return True
+    return any(word.lower() in secret.lower() for word in allowlist.get("stopwords", []))
+
+
+def test_the_documented_demo_tokens_are_allowlisted_by_name() -> None:
+    """The default ruleset flags `curl … -H 'Authorization: Bearer <value>'` (curl-auth-header).
+
+    The README documents the sandbox tokens that way and the README is not under `docs/`, so the
+    global allowlist has to recognise the token *names* the repository defines. This is what failed
+    the release gate on four README lines; the counterfactual keeps the allowance honest.
+    """
+    readme = (REPO_ROOT / "README.md").read_text(encoding="utf-8")
+    headers = [line.strip() for line in readme.splitlines() if "Authorization: Bearer" in line]
+    assert len(headers) >= 4, "the README is expected to document the API with curl examples"
+    for header in headers:
+        match = re.search(r"Bearer ([^\s'\"\\]+)", header)
+        assert match, f"cannot read the token out of {header!r}"
+        secret = match.group(1)
+        assert len(secret) >= 8, "the rule only reports values of eight characters or more"
+        assert global_allowlist_suppresses("README.md", secret, header, header), (
+            f"the documented demo token {secret!r} must be allowlisted by name"
+        )
+    # The allowance is by name, not by shape: a value that is not one of the demo tokens stays a
+    # finding, which is the whole reason for adding it to the allowlist rather than the README.
+    assert not global_allowlist_suppresses(
+        "README.md",
+        "prod-rollout-token-9f3a1c",
+        "curl -H 'Authorization: Bearer prod-rollout-token-9f3a1c'",
+        "curl -H 'Authorization: Bearer prod-rollout-token-9f3a1c'",
+    )

@@ -37,7 +37,7 @@ jobs:
         # the API for anyone triaging. The step runs even when the scan failed, and exits 1 on
         # findings so the gate stays blocking on its own.
         if: always()
-        run: python scripts/report_gitleaks_findings.py results.sarif
+        run: python scripts/report_sarif_findings.py results.sarif --label gitleaks
       - name: Local hygiene check (duplicate guard, runs without network)
         run: bash scripts/check_repo_hygiene.sh
 
@@ -109,7 +109,12 @@ jobs:
           severity: HIGH,CRITICAL
           ignore-unfixed: true
           exit-code: "1"
-      - uses: github/codeql-action/upload-sarif@v3
+      - name: Annotate the vulnerabilities on the check run
+        # The image scan fails through its exit code alone; the report it writes names the
+        # vulnerable package, so the same reporter that annotates gitleaks annotates trivy.
+        if: always()
+        run: python scripts/report_sarif_findings.py trivy.sarif --label trivy
+      - uses: github/codeql-action/upload-sarif@v4
         if: always()
         with:
           sarif_file: trivy.sarif
