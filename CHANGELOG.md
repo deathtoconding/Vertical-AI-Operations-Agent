@@ -36,6 +36,12 @@ are recorded because each one made a control either fail for the wrong reason or
   visible on the check run and readable through the API. The annotation steps run with
   `--no-fail`: the scanner is the gate, and a second red step for the same finding only obscures
   which one is which.
+- **The database suites were skipped in CI, and the job stayed green.** The suites refuse to fake
+  the system of record, and no test database was configured for them, so every schema-dependent
+  test skipped and `pytest` exited 0; only the coverage floor noticed (190 skipped on the release
+  commit, coverage below the threshold). The test job configures the service database, asserts the
+  schema is at `head` before the suites start, and a *configured* database that does not answer is
+  now a failure instead of a skip.
 - **A red `ci` run did not say what failed.** The test job stopped with a step name and an exit
   code; the failing test and its assertion were only in the log. Every pytest invocation now
   writes JUnit XML and `scripts/report_test_failures.py` re-emits the failures as check

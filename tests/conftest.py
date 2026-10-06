@@ -109,6 +109,14 @@ def _postgres_available(url: str | None) -> bool:
 def database_url() -> str:
     url = _test_database_url()
     if not _postgres_available(url):
+        if os.environ.get("AIOPS_TEST_DATABASE_URL"):
+            # An explicitly configured database that does not answer is a broken environment, not
+            # a reason to test less: skipping here is what kept a whole CI test job green while
+            # every schema-dependent suite never ran, and only the coverage floor noticed.
+            pytest.fail(
+                "AIOPS_TEST_DATABASE_URL is configured but nothing answered there "
+                "(the suites do not fake the system of record)"
+            )
         pytest.skip(
             "no PostgreSQL available — run `make pg` or set AIOPS_TEST_DATABASE_URL "
             "(integration tests do not fake the system of record)"

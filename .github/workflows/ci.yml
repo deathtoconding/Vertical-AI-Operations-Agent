@@ -72,6 +72,10 @@ jobs:
           --health-retries 10
     env:
       AIOPS_DATABASE_URL: postgresql+psycopg://aiops:aiops@localhost:5432/aiops
+      # The schema-dependent suites skip when no test database is configured — and a skipped
+      # integration test looks exactly like a passing one. They ran nowhere in CI until the
+      # coverage floor caught it.
+      AIOPS_TEST_DATABASE_URL: postgresql+psycopg://aiops:aiops@localhost:5432/aiops
     steps:
       - uses: actions/checkout@v5
       - uses: actions/setup-python@v6
@@ -88,7 +92,11 @@ jobs:
       - name: Unit tests
         run: pytest tests/unit -q -m "unit or not integration" --junitxml=artifacts/junit-unit.xml
       - name: Migrations
-        run: alembic -c app/persistence/alembic.ini upgrade head
+        run: |
+          alembic -c app/persistence/alembic.ini upgrade head
+          # Prove the schema the suites are about to use is the schema they expect: a migration
+          # that silently does nothing would leave them testing yesterday's tables.
+          alembic -c app/persistence/alembic.ini current | grep -q '(head)'
       - name: Integration tests (real PostgreSQL)
         run: pytest tests/integration -q --junitxml=artifacts/junit-integration.xml
       - name: Security tests

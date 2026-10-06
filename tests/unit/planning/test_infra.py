@@ -300,6 +300,39 @@ def test_prometheus_scrapes_the_application_metrics_endpoint() -> None:
     assert "aiops_" in rules, "alert rules must reference real metric families"
 
 
+def test_the_ci_test_job_exercises_the_database() -> None:
+    """A skipped integration test looks exactly like a passing one.
+
+    The suites refuse to fake the system of record, so with no test database configured they
+    *skip*: the job stayed green and the schema-dependent suites never ran in CI until the
+    coverage floor exposed it (190 skipped, coverage under the floor). The job now configures the
+    service database, asserts the schema is at head before the suites start, and an unreachable
+    database is a failure rather than a skip.
+    """
+    workflow = yaml.safe_load(
+        (REPO_ROOT / ".github" / "workflows" / "ci.yml").read_text(encoding="utf-8")
+    )
+    job = workflow["jobs"]["test"]
+    assert job["env"]["AIOPS_TEST_DATABASE_URL"] == job["env"]["AIOPS_DATABASE_URL"], (
+        "the suites and the application must be pointed at the same database"
+    )
+    migrations = next(step for step in job["steps"] if step.get("name") == "Migrations")
+    assert "(head)" in migrations["run"], "the job must prove the schema, not assume it"
+
+
+def test_an_unreachable_configured_database_fails_instead_of_skipping(monkeypatch) -> None:
+    """The behavioural half of the contract above, exercised without a pytest run."""
+    from tests import conftest
+
+    monkeypatch.setenv(
+        "AIOPS_TEST_DATABASE_URL", "postgresql+psycopg://aiops:aiops@127.0.0.1:1/aiops"
+    )
+    # pytest exposes the wrapped function at run time; the type stubs do not know about it.
+    fixture: Any = conftest.database_url
+    with pytest.raises(pytest.fail.Exception):
+        fixture.__wrapped__()
+
+
 def test_the_runtime_stage_carries_no_package_manager() -> None:
     """Nine HIGH/CRITICAL advisories in the release gate were pip/setuptools/wheel.
 
