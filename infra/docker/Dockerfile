@@ -27,9 +27,17 @@ COPY app ./app
 COPY scripts ./scripts
 COPY prompts ./prompts
 
+# The application and its pinned dependencies are installed into a virtual environment rather
+# than a `--prefix` directory. `--prefix=/install` writes packages where the interpreter does not
+# look: nothing adds `/install/lib/python3.11/site-packages` to `sys.path`, so the image built
+# cleanly and then died at boot with `ModuleNotFoundError: No module named 'alembic'` — the
+# container gate could never pass. A venv is a real site directory for its interpreter, so
+# imports, `.pth` files and console scripts behave exactly as they do in development.
 RUN python -m pip install --upgrade pip \
     && python -m pip wheel --wheel-dir /wheels . \
-    && python -m pip install --prefix=/install --no-deps /wheels/*.whl
+    && python -m venv /opt/venv \
+    && /opt/venv/bin/python -m pip install --no-index --find-links /wheels \
+        /wheels/ai_operations_agent-*.whl
 
 # --------------------------------------------------------------------------- #
 # Stage 2 — runtime
@@ -43,8 +51,7 @@ LABEL org.opencontainers.image.title="ai-operations-agent" \
 
 ENV PYTHONUNBUFFERED=1 \
     PYTHONDONTWRITEBYTECODE=1 \
-    PIP_DISABLE_PIP_VERSION_CHECK=1 \
-    PATH="/install/bin:${PATH}" \
+    PATH="/opt/venv/bin:${PATH}" \
     PYTHONPATH="/app" \
     AIOPS_ENV=production
 
@@ -55,12 +62,32 @@ RUN apt-get update \
     && groupadd --gid 10001 aiops \
     && useradd --uid 10001 --gid 10001 --create-home --shell /usr/sbin/nologin aiops
 
-COPY --from=builder /install /install
+COPY --from=builder /opt/venv /opt/venv
 COPY --chown=10001:10001 app /app/app
 COPY --chown=10001:10001 prompts /app/prompts
 COPY --chown=10001:10001 configs /app/configs
 COPY --chown=10001:10001 scripts/entrypoint.sh /app/scripts/entrypoint.sh
 COPY --chown=10001:10001 app/persistence/alembic.ini /app/app/persistence/alembic.ini
+
+# No package manager in the released image: the interpreter, the virtual environment and every
+# wheel are final at build time. `pip`, `setuptools` and the copies of `wheel`/`jaraco.context`
+# vendored inside setuptools are bootstrapping tools this project neither pins nor ships — and
+# nine HIGH/CRITICAL advisories in the release gate came from exactly those distributions, none
+# of which a dependency change here could patch. Removing them is the fix (SEC-001, DEV-001).
+RUN set -eux; \
+    for prefix in /usr/local /opt/venv; do \
+        rm -rf \
+            "$prefix/lib/python3.11/site-packages/pip" \
+            "$prefix"/lib/python3.11/site-packages/pip-*.dist-info \
+            "$prefix/lib/python3.11/site-packages/setuptools" \
+            "$prefix"/lib/python3.11/site-packages/setuptools-*.dist-info \
+            "$prefix/lib/python3.11/site-packages/wheel" \
+            "$prefix"/lib/python3.11/site-packages/wheel-*.dist-info \
+            "$prefix/lib/python3.11/site-packages/pkg_resources" \
+            "$prefix/lib/python3.11/site-packages/_distutils_hack" \
+            "$prefix/lib/python3.11/site-packages/distutils-precedence.pth" \
+            "$prefix/bin/pip" "$prefix/bin/pip3" "$prefix/bin/pip3.11"; \
+    done
 
 WORKDIR /app
 USER 10001:10001

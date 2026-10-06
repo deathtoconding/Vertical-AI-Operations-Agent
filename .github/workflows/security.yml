@@ -34,10 +34,10 @@ jobs:
         # The action writes results.sarif and fails with "see job summary for details". A finding
         # that only exists in a log file is a finding most reviewers never see, so it is re-emitted
         # as a check annotation attached to the file and line — readable in the diff, and through
-        # the API for anyone triaging. The step runs even when the scan failed, and exits 1 on
-        # findings so the gate stays blocking on its own.
+        # the API for anyone triaging. The step runs even when the scan failed (`--no-fail`): the
+        # scanner is the gate, and this step exists so a red run explains itself.
         if: always()
-        run: python scripts/report_sarif_findings.py results.sarif --label gitleaks
+        run: python scripts/report_sarif_findings.py results.sarif --label gitleaks --no-fail
       - name: Local hygiene check (duplicate guard, runs without network)
         run: bash scripts/check_repo_hygiene.sh
 
@@ -113,7 +113,7 @@ jobs:
         # The image scan fails through its exit code alone; the report it writes names the
         # vulnerable package, so the same reporter that annotates gitleaks annotates trivy.
         if: always()
-        run: python scripts/report_sarif_findings.py trivy.sarif --label trivy
+        run: python scripts/report_sarif_findings.py trivy.sarif --label trivy --no-fail
       - uses: github/codeql-action/upload-sarif@v4
         if: always()
         with:

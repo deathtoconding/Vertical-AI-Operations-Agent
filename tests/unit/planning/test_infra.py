@@ -300,6 +300,41 @@ def test_prometheus_scrapes_the_application_metrics_endpoint() -> None:
     assert "aiops_" in rules, "alert rules must reference real metric families"
 
 
+def test_the_runtime_stage_carries_no_package_manager() -> None:
+    """Nine HIGH/CRITICAL advisories in the release gate were pip/setuptools/wheel.
+
+    They arrive with the base image and with `venv`'s bootstrapping: this project neither pins nor
+    ships them, and no change to our dependency set could patch them. The runtime stage removes
+    them from both the base interpreter and the application's virtual environment (SEC-001).
+    """
+    runtime = DOCKERFILE.read_text(encoding="utf-8").partition("AS runtime")[2]
+    removal = re.search(r"^RUN set -eux;(.*?)(?=\n\n|\Z)", runtime, re.MULTILINE | re.DOTALL)
+    assert removal, "the runtime stage must remove what production does not need"
+    removed = removal.group(1)
+    for target in ("site-packages/pip", "site-packages/setuptools", "site-packages/wheel"):
+        assert target in removed, f"the image must not ship {target}"
+    assert "/bin/pip" in removed, "an executable package manager is still a package manager"
+    assert "/usr/local" in removed and "/opt/venv" in removed, (
+        "both the base interpreter and the application environment are pruned"
+    )
+
+
+def test_the_application_is_installed_where_the_interpreter_looks() -> None:
+    """`pip install --prefix=/install` writes packages where nothing adds them to `sys.path`.
+
+    The image built cleanly and then died at boot with `ModuleNotFoundError: No module named
+    'alembic'` — the smoke test could never pass. A virtual environment added to PATH is a site
+    directory for its interpreter, so imports and console scripts behave as they do in development.
+    """
+    text = DOCKERFILE.read_text(encoding="utf-8")
+    assert "python -m venv /opt/venv" in text, "the dependencies need an environment on sys.path"
+    assert 'PATH="/opt/venv/bin:${PATH}"' in text, "the venv's console scripts must win on PATH"
+    instructions = "\n".join(
+        line for line in text.splitlines() if not line.lstrip().startswith("#")
+    )
+    assert "--prefix" not in instructions, "a prefix install is invisible to the interpreter"
+
+
 def test_the_lockfile_and_project_metadata_agree_on_the_runtime() -> None:
     project = tomllib.loads((REPO_ROOT / "pyproject.toml").read_text(encoding="utf-8"))
     requires = project["project"]["requires-python"]

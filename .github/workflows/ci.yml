@@ -137,7 +137,24 @@ jobs:
           set -eu
           network=aiops-smoke
           docker network create "$network"
+          annotate() {
+            printf '::error::%s\n' "$(printf '%s' "$1" | sed -e 's/%/%25/g')"
+          }
           cleanup() {
+            status=$?
+            if [ "$status" -ne 0 ]; then
+              # A container that never answers is diagnosed from its own output. The job log is not
+              # readable through the API; the annotations are, so each line of the last words of
+              # each container becomes one — which is how this step explained its first failure.
+              annotate "smoke test failed (exit ${status}); container output follows"
+              docker inspect --format '{{.Name}} state={{.State.Status}} exit={{.State.ExitCode}}' \
+                aiops-smoke aiops-smoke-db 2>/dev/null \
+                | while IFS= read -r line; do annotate "$line"; done || true
+              docker logs aiops-smoke 2>&1 | tail -25 \
+                | while IFS= read -r line; do annotate "app: ${line}"; done || true
+              docker logs aiops-smoke-db 2>&1 | tail -10 \
+                | while IFS= read -r line; do annotate "db: ${line}"; done || true
+            fi
             docker rm -f aiops-smoke aiops-smoke-db >/dev/null 2>&1 || true
             docker network rm "$network" >/dev/null 2>&1 || true
           }

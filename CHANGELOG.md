@@ -33,15 +33,39 @@ are recorded because each one made a control either fail for the wrong reason or
   through its exit code alone. `scripts/report_sarif_findings.py` reads the SARIF report each
   scanner already writes and re-emits every result as a check annotation (rule, file, line, and —
   for gitleaks — the commit and `.gitleaksignore` fingerprint; never the secret), so a finding is
-  visible on the check run and readable through the API.
+  visible on the check run and readable through the API. The annotation steps run with
+  `--no-fail`: the scanner is the gate, and a second red step for the same finding only obscures
+  which one is which.
 - **A red `ci` run did not say what failed.** The test job stopped with a step name and an exit
   code; the failing test and its assertion were only in the log. Every pytest invocation now
   writes JUnit XML and `scripts/report_test_failures.py` re-emits the failures as check
   annotations (test id, file, line, assertion message), with the reports kept as an artefact.
-- **The container smoke test asserted the wrong thing — and could never pass.** The image's
-  entrypoint refuses to start without `AIOPS_DATABASE_URL`, so the probe ran against a container
-  that had already exited. The build job now starts a throwaway PostgreSQL, lets the image apply
-  the real schema, and checks liveness, readiness and that the migration landed.
+- **The image could not start, and the gate that exists to catch it was broken too.** Three
+  defects stacked up behind one red step:
+  * the probe curled a container that had already exited — `scripts/entrypoint.sh` refuses to start
+    without `AIOPS_DATABASE_URL`, and the smoke test passed none;
+  * the dependencies were installed with `pip install --prefix=/install`, a location the
+    interpreter never adds to `sys.path`, so even a started container died importing `alembic`:
+    the image built cleanly and could never serve a request;
+  * `alembic upgrade head` ignored `AIOPS_DATABASE_URL` — `resolve_database_url()` fell through to
+    *localhost* whenever there was no local `.pgdata`, so migrations in a container were aimed at a
+    database that does not exist there, while the application used the configured one.
+  The build installs into a virtual environment that is on `PATH`, the URL resolver prefers the
+  configured database (the local socket is now a fallback, and an explicit `-x url` still wins),
+  and the smoke test starts a throwaway PostgreSQL, waits for the image to migrate it, and checks
+  liveness, readiness and `alembic_version` — annotating the container's own output when it fails.
+  Rehearsed outside Docker against a real PostgreSQL: migrations applied, `/health` and `/ready`
+  answered 200 with `database.status=ok`.
+- **Nine HIGH/CRITICAL advisories that no dependency change could patch.** The image scan reported
+  `pip`, `setuptools` and the copies of `wheel`/`jaraco.context` vendored inside setuptools —
+  bootstrapping tools that arrive with the base image and with `venv`, are not in this project's
+  dependency set, and cannot be upgraded by editing `pyproject.toml`. The runtime stage now removes
+  them from both the base interpreter and the application environment: production needs no package
+  manager, and the image carries neither the advisories nor the ability to install anything.
+- **A contract test that passed locally and failed on the runner.** `test_documentation.py`
+  asserted that ADR numbers are ordered by reading `Path.glob("*.md")`, which yields directory
+  order — a filesystem accident, not a property of the repository. The paths are sorted now and the
+  numbers must run `0001..N` with no gap or reuse.
 - **The README's own examples were reported as credentials.** The default `curl-auth-header` rule
   reads `curl … -H 'Authorization: Bearer <value>'` as a leaked token, and the README documents the
   sandbox tokens exactly that way — four findings on the release commit, because the README is not

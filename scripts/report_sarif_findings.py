@@ -10,8 +10,9 @@ shows up on the check run, next to the file and line, and it is readable through
 Annotations carry the rule id, the location and — for scanners that scan commits, such as
 gitleaks — the commit and the `.gitleaksignore` fingerprint. They never carry the secret itself:
 the report is generated with `--redact`, and re-printing a value would undo that. A report with
-results exits 1, so the reporting step is itself blocking; `--fingerprint-only` turns it into a
-reporting aid that never fails the job.
+results exits 1, so the reporter is blocking when it is the only gate. `--no-fail` hands the
+verdict back to the scanner step — the annotations then explain a failure, instead of being a
+second, redundant reason for one.
 
 Usage::
 
@@ -68,9 +69,9 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("report", type=Path, help="SARIF report written by the scanner")
     parser.add_argument("--label", default="scanner", help="tool name used in the annotation")
     parser.add_argument(
-        "--fingerprint-only",
+        "--no-fail",
         action="store_true",
-        help="report and annotate, but never fail the step (the scanner step owns the verdict)",
+        help="annotate but never fail the step (the scanner step owns the verdict)",
     )
     args = parser.parse_args(argv)
 
@@ -91,7 +92,7 @@ def main(argv: list[str] | None = None) -> int:
             "  → if the finding is a false positive, record why where the fix lands: a rule "
             "allowlist in configs/gitleaks.toml, or the fingerprint in .gitleaksignore"
         )
-    return 0 if args.fingerprint_only else 1
+    return 0 if args.no_fail else 1
 
 
 if __name__ == "__main__":

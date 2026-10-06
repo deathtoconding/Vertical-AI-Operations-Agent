@@ -146,7 +146,7 @@ def main(argv: list[str] | None = None) -> int:
     for path in paths:
         try:
             # The report is written by this pipeline a moment earlier, not by an outside party.
-            root = ElementTree.parse(path).getroot()  # noqa: S314
+            root = ElementTree.parse(path).getroot()  # noqa: S314  # nosec B314
         except (ElementTree.ParseError, OSError) as error:  # pragma: no cover - defensive
             print(f"::warning::cannot read {path}: {error}", flush=True)
             continue

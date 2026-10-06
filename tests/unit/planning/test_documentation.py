@@ -127,9 +127,17 @@ def test_adr_is_complete(name: str) -> None:
 
 
 def test_adr_numbers_are_unique_and_ordered() -> None:
-    numbers = [int(path.name.split("-")[0]) for path in (DOCS / "adr").glob("*.md")]
-    assert numbers == sorted(numbers)
-    assert len(numbers) == len(set(numbers))
+    """Numbering is the reading order, and a directory listing is not an order.
+
+    ``Path.glob`` yields entries in directory order, which is a property of the filesystem and of
+    how the files happened to be written — this test passed locally and failed on the CI runner for
+    exactly that reason. Sort the paths, then assert the numbers are 0001..N with no gap and no
+    reuse (a renumbered ADR silently breaks every link to it).
+    """
+    numbers = [int(path.name.split("-")[0]) for path in sorted((DOCS / "adr").glob("*.md"))]
+    assert numbers == list(range(1, len(numbers) + 1)), (
+        f"ADR numbers must run 1..{len(numbers)} in order, got {numbers}"
+    )
 
 
 # --------------------------------------------------------------------------- #
